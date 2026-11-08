@@ -1,174 +1,381 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import { BookOpen, CalendarDays, CheckCircle2, CircleAlert, Loader2, RefreshCw, RotateCcw, Search, UserRound, LibraryBig } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
+import { AlertCircle, BookOpen, Clock3, LoaderCircle, LibraryBig, RotateCcw, UserRoundPlus, Users } from 'lucide-react';
 
-const initialBook = { title: '', author: '', year: '', quantity: '' };
-const initialReader = { name: '', email: '' };
-const initialLoan = { bookId: '', readerId: '' };
+const initialBook = { titulo: '', autor: '', ano: '', quantidadeExemplares: '' };
+const initialReader = { nome: '', email: '' };
+const initialLoan = { livroId: '', leitorId: '' };
 
 async function api(path, options = {}) {
-  const response = await fetch(`/api${path}`, {
+  const response = await fetch(path, {
     headers: { 'Content-Type': 'application/json', ...(options.headers || {}) },
     ...options,
   });
   const text = await response.text();
-  const body = text ? JSON.parse(text) : null;
+  const data = text ? JSON.parse(text) : null;
   if (!response.ok) {
-    throw new Error(body?.message || 'Falha na requisição');
+    const message = data?.message || data?.error || 'Erro inesperado';
+    const errors = data?.errors || null;
+    throw { status: response.status, message, errors };
   }
-  return body;
+  return data;
 }
 
-function App() {
+function formatDate(value) {
+  if (!value) return '—';
+  return new Intl.DateTimeFormat('pt-BR').format(new Date(`${value}T00:00:00`));
+}
+
+function Field({ label, children, hint, error }) {
+  return (
+    <label className="block space-y-1.5">
+      <div className="flex items-center justify-between gap-3">
+        <span className="text-sm font-medium text-slate-200">{label}</span>
+        {hint ? <span className="text-xs text-slate-400">{hint}</span> : null}
+      </div>
+      {children}
+      {error ? <p className="text-sm text-rose-300">{error}</p> : null}
+    </label>
+  );
+}
+
+function Panel({ title, icon: Icon, children, action }) {
+  return (
+    <section className="rounded-3xl border border-white/10 bg-white/5 p-5 shadow-2xl shadow-slate-950/20 backdrop-blur">
+      <div className="mb-5 flex items-center justify-between gap-4">
+        <div className="flex items-center gap-3">
+          <div className="rounded-2xl bg-cyan-400/15 p-3 text-cyan-300 ring-1 ring-cyan-300/20">
+            <Icon className="h-5 w-5" />
+          </div>
+          <div>
+            <h2 className="text-lg font-semibold text-white">{title}</h2>
+          </div>
+        </div>
+        {action}
+      </div>
+      {children}
+    </section>
+  );
+}
+
+function Stat({ label, value }) {
+  return (
+    <div className="rounded-2xl border border-white/10 bg-slate-950/40 p-4">
+      <div className="text-xs uppercase tracking-[0.2em] text-slate-400">{label}</div>
+      <div className="mt-2 text-2xl font-semibold text-white">{value}</div>
+    </div>
+  );
+}
+
+export default function App() {
   const [books, setBooks] = useState([]);
   const [readers, setReaders] = useState([]);
   const [loans, setLoans] = useState([]);
   const [overdue, setOverdue] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState(null);
   const [error, setError] = useState(null);
   const [bookForm, setBookForm] = useState(initialBook);
   const [readerForm, setReaderForm] = useState(initialReader);
   const [loanForm, setLoanForm] = useState(initialLoan);
+  const [saving, setSaving] = useState({ book: false, reader: false, loan: false });
 
-  const loadAll = async () => {
+  const activeLoans = useMemo(() => loans.filter((loan) => loan.ativo), [loans]);
+
+  async function refreshAll() {
     setLoading(true);
     setError(null);
     try {
-      const [b, r, l, o] = await Promise.all([
-        api('/books'),
-        api('/readers'),
-        api('/loans'),
-        api('/loans/overdue'),
+      const [booksData, readersData, loansData, overdueData] = await Promise.all([
+        api('/api/livros'),
+        api('/api/leitores'),
+        api('/api/emprestimos'),
+        api('/api/emprestimos/atrasados'),
       ]);
-      setBooks(b);
-      setReaders(r);
-      setLoans(l);
-      setOverdue(o);
-    } catch (e) {
-      setError(e.message);
+      setBooks(booksData);
+      setReaders(readersData);
+      setLoans(loansData);
+      setOverdue(overdueData);
+    } catch (err) {
+      setError(err.message || 'Falha ao carregar os dados');
     } finally {
       setLoading(false);
     }
-  };
+  }
 
-  useEffect(() => { loadAll(); }, []);
+  useEffect(() => {
+    refreshAll();
+  }, []);
 
-  const availableBooks = useMemo(() => books.filter((b) => b.availableQuantity > 0), [books]);
-  const activeLoans = useMemo(() => loans.filter((l) => !l.returnDate), [loans]);
-
-  const submitBook = async (e) => {
+  async function handleBookSubmit(e) {
     e.preventDefault();
-    setBusy(true); setError(null); setMessage(null);
+    setSaving((prev) => ({ ...prev, book: true }));
+    setMessage(null);
+    setError(null);
     try {
-      await api('/books', { method: 'POST', body: JSON.stringify({ ...bookForm, year: Number(bookForm.year), quantity: Number(bookForm.quantity) }) });
-      setBookForm(initialBook); setMessage('Livro cadastrado com sucesso.'); await loadAll();
-    } catch (e) { setError(e.message); }
-    finally { setBusy(false); }
-  };
+      await api('/api/livros', {
+        method: 'POST',
+        body: JSON.stringify({
+          titulo: bookForm.titulo.trim(),
+          autor: bookForm.autor.trim(),
+          ano: Number(bookForm.ano),
+          quantidadeExemplares: Number(bookForm.quantidadeExemplares),
+        }),
+      });
+      setBookForm(initialBook);
+      setMessage('Livro cadastrado com sucesso.');
+      await refreshAll();
+    } catch (err) {
+      setError(err.errors ? Object.values(err.errors).join(' · ') : err.message);
+    } finally {
+      setSaving((prev) => ({ ...prev, book: false }));
+    }
+  }
 
-  const submitReader = async (e) => {
+  async function handleReaderSubmit(e) {
     e.preventDefault();
-    setBusy(true); setError(null); setMessage(null);
-    try { await api('/readers', { method: 'POST', body: JSON.stringify(readerForm) }); setReaderForm(initialReader); setMessage('Leitor cadastrado com sucesso.'); await loadAll(); }
-    catch (e) { setError(e.message); }
-    finally { setBusy(false); }
-  };
+    setSaving((prev) => ({ ...prev, reader: true }));
+    setMessage(null);
+    setError(null);
+    try {
+      await api('/api/leitores', {
+        method: 'POST',
+        body: JSON.stringify({
+          nome: readerForm.nome.trim(),
+          email: readerForm.email.trim(),
+        }),
+      });
+      setReaderForm(initialReader);
+      setMessage('Leitor cadastrado com sucesso.');
+      await refreshAll();
+    } catch (err) {
+      setError(err.errors ? Object.values(err.errors).join(' · ') : err.message);
+    } finally {
+      setSaving((prev) => ({ ...prev, reader: false }));
+    }
+  }
 
-  const submitLoan = async (e) => {
+  async function handleLoanSubmit(e) {
     e.preventDefault();
-    setBusy(true); setError(null); setMessage(null);
-    try { await api('/loans', { method: 'POST', body: JSON.stringify({ bookId: Number(loanForm.bookId), readerId: Number(loanForm.readerId) }) }); setLoanForm(initialLoan); setMessage('Empréstimo registrado.'); await loadAll(); }
-    catch (e) { setError(e.message); }
-    finally { setBusy(false); }
-  };
+    setSaving((prev) => ({ ...prev, loan: true }));
+    setMessage(null);
+    setError(null);
+    try {
+      await api('/api/emprestimos', {
+        method: 'POST',
+        body: JSON.stringify({
+          livroId: Number(loanForm.livroId),
+          leitorId: Number(loanForm.leitorId),
+        }),
+      });
+      setLoanForm(initialLoan);
+      setMessage('Empréstimo registrado com sucesso.');
+      await refreshAll();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSaving((prev) => ({ ...prev, loan: false }));
+    }
+  }
 
-  const returnLoan = async (id) => {
-    setBusy(true); setError(null); setMessage(null);
-    try { await api(`/loans/${id}/return`, { method: 'POST' }); setMessage('Devolução registrada.'); await loadAll(); }
-    catch (e) { setError(e.message); }
-    finally { setBusy(false); }
-  };
+  async function devolver(id) {
+    setError(null);
+    setMessage(null);
+    try {
+      await api(`/api/emprestimos/${id}/devolucao`, { method: 'POST' });
+      setMessage('Devolução registrada. O exemplar voltou para o acervo.');
+      await refreshAll();
+    } catch (err) {
+      setError(err.message);
+    }
+  }
 
-  return <div className="min-h-screen bg-slate-950 text-slate-100">
-    <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,_rgba(59,130,246,0.25),_transparent_40%),radial-gradient(circle_at_bottom_right,_rgba(16,185,129,0.12),_transparent_35%)]" />
-    <main className="relative mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
-      <header className="mb-8 flex flex-col gap-4 rounded-3xl border border-white/10 bg-white/5 p-6 shadow-2xl backdrop-blur xl:flex-row xl:items-end xl:justify-between">
-        <div>
-          <div className="mb-3 inline-flex items-center gap-2 rounded-full bg-blue-500/15 px-3 py-1 text-sm text-blue-200"><LibraryBig size={16} /> Biblioteca</div>
-          <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">Cadastro e empréstimos em um só lugar</h1>
-          <p className="mt-2 max-w-2xl text-slate-300">Gerencie livros, leitores, empréstimos e devoluções com retorno imediato das regras de negócio.</p>
+  return (
+    <div className="min-h-screen bg-[radial-gradient(circle_at_top,_rgba(34,211,238,0.18),_transparent_35%),linear-gradient(180deg,#07111f_0%,#0b1220_55%,#050816_100%)] text-slate-100">
+      <main className="mx-auto flex w-full max-w-7xl flex-col gap-6 px-4 py-6 sm:px-6 lg:px-8">
+        <header className="overflow-hidden rounded-[2rem] border border-white/10 bg-white/5 p-6 shadow-2xl shadow-slate-950/30 backdrop-blur md:p-8">
+          <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
+            <div className="max-w-3xl space-y-4">
+              <div className="inline-flex items-center gap-2 rounded-full border border-cyan-300/20 bg-cyan-300/10 px-4 py-2 text-sm text-cyan-200">
+                <LibraryBig className="h-4 w-4" /> Biblioteca digital
+              </div>
+              <div>
+                <h1 className="text-4xl font-bold tracking-tight text-white md:text-5xl">Controle de livros, leitores e empréstimos</h1>
+                <p className="mt-3 max-w-2xl text-base leading-7 text-slate-300">
+                  Cadastre o acervo, mantenha os leitores organizados, registre empréstimos e devoluções e acompanhe atrasos em tempo real.
+                </p>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:min-w-[420px]">
+              <Stat label="Livros" value={books.length} />
+              <Stat label="Leitores" value={readers.length} />
+              <Stat label="Empréstimos ativos" value={activeLoans.length} />
+              <Stat label="Atrasados" value={overdue.length} />
+            </div>
+          </div>
+        </header>
+
+        {message || error ? (
+          <div className={`rounded-2xl border p-4 ${error ? 'border-rose-400/30 bg-rose-500/10 text-rose-100' : 'border-emerald-400/30 bg-emerald-500/10 text-emerald-100'}`}>
+            <div className="flex items-start gap-3">
+              <AlertCircle className="mt-0.5 h-5 w-5 flex-none" />
+              <p className="text-sm leading-6">{error || message}</p>
+            </div>
+          </div>
+        ) : null}
+
+        <div className="grid gap-6 xl:grid-cols-3">
+          <Panel title="Cadastrar livro" icon={BookOpen}>
+            <form onSubmit={handleBookSubmit} className="space-y-4">
+              <Field label="Título">
+                <input className="w-full rounded-2xl border border-white/10 bg-slate-950/60 px-4 py-3 outline-none transition focus:border-cyan-300/50 focus:ring-2 focus:ring-cyan-300/20" value={bookForm.titulo} onChange={(e) => setBookForm({ ...bookForm, titulo: e.target.value })} required />
+              </Field>
+              <Field label="Autor">
+                <input className="w-full rounded-2xl border border-white/10 bg-slate-950/60 px-4 py-3 outline-none transition focus:border-cyan-300/50 focus:ring-2 focus:ring-cyan-300/20" value={bookForm.autor} onChange={(e) => setBookForm({ ...bookForm, autor: e.target.value })} required />
+              </Field>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <Field label="Ano">
+                  <input type="number" className="w-full rounded-2xl border border-white/10 bg-slate-950/60 px-4 py-3 outline-none transition focus:border-cyan-300/50 focus:ring-2 focus:ring-cyan-300/20" value={bookForm.ano} onChange={(e) => setBookForm({ ...bookForm, ano: e.target.value })} required />
+                </Field>
+                <Field label="Exemplares">
+                  <input type="number" min="0" className="w-full rounded-2xl border border-white/10 bg-slate-950/60 px-4 py-3 outline-none transition focus:border-cyan-300/50 focus:ring-2 focus:ring-cyan-300/20" value={bookForm.quantidadeExemplares} onChange={(e) => setBookForm({ ...bookForm, quantidadeExemplares: e.target.value })} required />
+                </Field>
+              </div>
+              <button disabled={saving.book} className="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-cyan-400 px-4 py-3 font-semibold text-slate-950 transition hover:bg-cyan-300 disabled:cursor-not-allowed disabled:opacity-60">
+                {saving.book ? <LoaderCircle className="h-4 w-4 animate-spin" /> : null}
+                Salvar livro
+              </button>
+            </form>
+          </Panel>
+
+          <Panel title="Cadastrar leitor" icon={Users}>
+            <form onSubmit={handleReaderSubmit} className="space-y-4">
+              <Field label="Nome">
+                <input className="w-full rounded-2xl border border-white/10 bg-slate-950/60 px-4 py-3 outline-none transition focus:border-cyan-300/50 focus:ring-2 focus:ring-cyan-300/20" value={readerForm.nome} onChange={(e) => setReaderForm({ ...readerForm, nome: e.target.value })} required />
+              </Field>
+              <Field label="E-mail">
+                <input type="email" className="w-full rounded-2xl border border-white/10 bg-slate-950/60 px-4 py-3 outline-none transition focus:border-cyan-300/50 focus:ring-2 focus:ring-cyan-300/20" value={readerForm.email} onChange={(e) => setReaderForm({ ...readerForm, email: e.target.value })} required />
+              </Field>
+              <button disabled={saving.reader} className="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-fuchsia-400 px-4 py-3 font-semibold text-slate-950 transition hover:bg-fuchsia-300 disabled:cursor-not-allowed disabled:opacity-60">
+                {saving.reader ? <LoaderCircle className="h-4 w-4 animate-spin" /> : null}
+                Salvar leitor
+              </button>
+            </form>
+          </Panel>
+
+          <Panel title="Registrar empréstimo" icon={RotateCcw}>
+            <form onSubmit={handleLoanSubmit} className="space-y-4">
+              <Field label="Livro" hint="Disponíveis: apenas livros com exemplares livres">
+                <select className="w-full rounded-2xl border border-white/10 bg-slate-950/60 px-4 py-3 outline-none transition focus:border-cyan-300/50 focus:ring-2 focus:ring-cyan-300/20" value={loanForm.livroId} onChange={(e) => setLoanForm({ ...loanForm, livroId: e.target.value })} required>
+                  <option value="">Selecione...</option>
+                  {books.map((book) => (
+                    <option key={book.id} value={book.id}>
+                      {book.titulo} — {book.exemplaresDisponiveis} disponíveis
+                    </option>
+                  ))}
+                </select>
+              </Field>
+              <Field label="Leitor" hint="Cada leitor pode ter até 3 empréstimos ativos">
+                <select className="w-full rounded-2xl border border-white/10 bg-slate-950/60 px-4 py-3 outline-none transition focus:border-cyan-300/50 focus:ring-2 focus:ring-cyan-300/20" value={loanForm.leitorId} onChange={(e) => setLoanForm({ ...loanForm, leitorId: e.target.value })} required>
+                  <option value="">Selecione...</option>
+                  {readers.map((reader) => (
+                    <option key={reader.id} value={reader.id}>
+                      {reader.nome}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+              <button disabled={saving.loan} className="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-emerald-400 px-4 py-3 font-semibold text-slate-950 transition hover:bg-emerald-300 disabled:cursor-not-allowed disabled:opacity-60">
+                {saving.loan ? <LoaderCircle className="h-4 w-4 animate-spin" /> : null}
+                Registrar empréstimo
+              </button>
+            </form>
+          </Panel>
         </div>
-        <button onClick={loadAll} className="inline-flex items-center justify-center gap-2 rounded-2xl border border-white/10 bg-white/10 px-4 py-3 font-medium text-white transition hover:bg-white/15 disabled:opacity-60" disabled={loading || busy}><RefreshCw size={18} className={loading ? 'animate-spin' : ''} /> Atualizar</button>
-      </header>
 
-      {(message || error) && <div className={`mb-6 rounded-2xl border p-4 ${error ? 'border-rose-500/30 bg-rose-500/10 text-rose-100' : 'border-emerald-500/30 bg-emerald-500/10 text-emerald-100'}`}><div className="flex items-start gap-3"><div className="mt-0.5">{error ? <CircleAlert size={20} /> : <CheckCircle2 size={20} />}</div><p>{error || message}</p></div></div>}
+        <div className="grid gap-6 xl:grid-cols-2">
+          <Panel title="Livros cadastrados" icon={BookOpen} action={<span className="text-sm text-slate-400">{books.length} itens</span>}>
+            {loading ? <p className="text-slate-300">Carregando dados...</p> : books.length === 0 ? <p className="text-slate-400">Nenhum livro cadastrado ainda.</p> : <div className="overflow-hidden rounded-2xl border border-white/10">
+              <table className="min-w-full divide-y divide-white/10 text-left text-sm">
+                <thead className="bg-slate-950/40 text-slate-300">
+                  <tr>
+                    <th className="px-4 py-3 font-medium">Título</th>
+                    <th className="px-4 py-3 font-medium">Autor</th>
+                    <th className="px-4 py-3 font-medium">Ano</th>
+                    <th className="px-4 py-3 font-medium">Disponíveis</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-white/10 bg-white/5">
+                  {books.map((book) => (
+                    <tr key={book.id}>
+                      <td className="px-4 py-3 font-medium text-white">{book.titulo}</td>
+                      <td className="px-4 py-3 text-slate-300">{book.autor}</td>
+                      <td className="px-4 py-3 text-slate-300">{book.ano}</td>
+                      <td className="px-4 py-3 text-slate-300">{book.exemplaresDisponiveis}/{book.quantidadeExemplares}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>}
+          </Panel>
 
-      {loading ? <div className="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/5 p-6 text-slate-300"><Loader2 className="animate-spin" /> Carregando dados...</div> : <div className="grid gap-6 xl:grid-cols-2">
-        <Section title="Cadastrar livro" icon={<BookOpen size={18} />}>
-          <form onSubmit={submitBook} className="grid gap-4 sm:grid-cols-2">
-            <Field label="Título" value={bookForm.title} onChange={(e) => setBookForm({ ...bookForm, title: e.target.value })} />
-            <Field label="Autor" value={bookForm.author} onChange={(e) => setBookForm({ ...bookForm, author: e.target.value })} />
-            <Field label="Ano" type="number" value={bookForm.year} onChange={(e) => setBookForm({ ...bookForm, year: e.target.value })} />
-            <Field label="Quantidade" type="number" value={bookForm.quantity} onChange={(e) => setBookForm({ ...bookForm, quantity: e.target.value })} />
-            <button className="sm:col-span-2 rounded-2xl bg-blue-500 px-4 py-3 font-semibold text-white transition hover:bg-blue-400 disabled:opacity-60" disabled={busy}>Salvar livro</button>
-          </form>
-        </Section>
+          <Panel title="Leitores cadastrados" icon={UserRoundPlus} action={<span className="text-sm text-slate-400">{readers.length} itens</span>}>
+            {loading ? <p className="text-slate-300">Carregando dados...</p> : readers.length === 0 ? <p className="text-slate-400">Nenhum leitor cadastrado ainda.</p> : <div className="overflow-hidden rounded-2xl border border-white/10">
+              <table className="min-w-full divide-y divide-white/10 text-left text-sm">
+                <thead className="bg-slate-950/40 text-slate-300">
+                  <tr>
+                    <th className="px-4 py-3 font-medium">Nome</th>
+                    <th className="px-4 py-3 font-medium">E-mail</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-white/10 bg-white/5">
+                  {readers.map((reader) => (
+                    <tr key={reader.id}>
+                      <td className="px-4 py-3 font-medium text-white">{reader.nome}</td>
+                      <td className="px-4 py-3 text-slate-300">{reader.email}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>}
+          </Panel>
+        </div>
 
-        <Section title="Cadastrar leitor" icon={<UserRound size={18} />}>
-          <form onSubmit={submitReader} className="grid gap-4 sm:grid-cols-2">
-            <Field label="Nome" value={readerForm.name} onChange={(e) => setReaderForm({ ...readerForm, name: e.target.value })} />
-            <Field label="E-mail" type="email" value={readerForm.email} onChange={(e) => setReaderForm({ ...readerForm, email: e.target.value })} />
-            <button className="sm:col-span-2 rounded-2xl bg-emerald-500 px-4 py-3 font-semibold text-white transition hover:bg-emerald-400 disabled:opacity-60" disabled={busy}>Salvar leitor</button>
-          </form>
-        </Section>
+        <div className="grid gap-6 xl:grid-cols-2">
+          <Panel title="Empréstimos ativos e devoluções" icon={Clock3} action={<span className="text-sm text-slate-400">{activeLoans.length} ativos</span>}>
+            {loading ? <p className="text-slate-300">Carregando dados...</p> : activeLoans.length === 0 ? <p className="text-slate-400">Nenhum empréstimo ativo no momento.</p> : <div className="space-y-3">
+              {activeLoans.map((loan) => (
+                <article key={loan.id} className="rounded-2xl border border-white/10 bg-slate-950/40 p-4">
+                  <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="space-y-1">
+                      <div className="font-semibold text-white">{loan.livroTitulo}</div>
+                      <div className="text-sm text-slate-300">{loan.leitorNome}</div>
+                      <div className="text-sm text-slate-400">Empréstimo em {formatDate(loan.dataEmprestimo)} · previsto para {formatDate(loan.dataPrevistaDevolucao)}</div>
+                    </div>
+                    <button onClick={() => devolver(loan.id)} className="inline-flex items-center justify-center gap-2 rounded-2xl bg-white/10 px-4 py-2.5 font-medium text-white transition hover:bg-white/15">
+                      <RotateCcw className="h-4 w-4" />
+                      Registrar devolução
+                    </button>
+                  </div>
+                </article>
+              ))}
+            </div>}
+          </Panel>
 
-        <Section title="Registrar empréstimo" icon={<CalendarDays size={18} />} className="xl:col-span-2">
-          <form onSubmit={submitLoan} className="grid gap-4 lg:grid-cols-[1fr_1fr_auto]">
-            <Select label={`Livro disponível (${availableBooks.length})`} value={loanForm.bookId} onChange={(e) => setLoanForm({ ...loanForm, bookId: e.target.value })} options={availableBooks.map((b) => ({ value: b.id, label: `${b.title} • disponível: ${b.availableQuantity}` }))} placeholder="Selecione um livro" />
-            <Select label={`Leitor (${readers.length})`} value={loanForm.readerId} onChange={(e) => setLoanForm({ ...loanForm, readerId: e.target.value })} options={readers.map((r) => ({ value: r.id, label: `${r.name} • ${r.email}` }))} placeholder="Selecione um leitor" />
-            <button className="rounded-2xl bg-indigo-500 px-5 py-3 font-semibold text-white transition hover:bg-indigo-400 disabled:opacity-60" disabled={busy || availableBooks.length === 0 || readers.length === 0}>Emprestar</button>
-          </form>
-        </Section>
-
-        <Section title="Livros" icon={<BookOpen size={18} />}>
-          <List items={books.map((b) => <div key={b.id} className="rounded-2xl border border-white/10 bg-slate-900/60 p-4"><div className="flex items-start justify-between gap-3"><div><h3 className="font-semibold">{b.title}</h3><p className="text-sm text-slate-300">{b.author} • {b.year}</p></div><span className={`rounded-full px-3 py-1 text-xs font-medium ${b.availableQuantity > 0 ? 'bg-emerald-500/15 text-emerald-200' : 'bg-rose-500/15 text-rose-200'}`}>{b.availableQuantity}/{b.quantity}</span></div></div>)} empty="Nenhum livro cadastrado." />
-        </Section>
-
-        <Section title="Leitores" icon={<UserRound size={18} />}>
-          <List items={readers.map((r) => <div key={r.id} className="rounded-2xl border border-white/10 bg-slate-900/60 p-4"><h3 className="font-semibold">{r.name}</h3><p className="text-sm text-slate-300">{r.email}</p></div>)} empty="Nenhum leitor cadastrado." />
-        </Section>
-
-        <Section title="Empréstimos ativos" icon={<Search size={18} />} className="xl:col-span-2">
-          <List items={activeLoans.map((loan) => <div key={loan.id} className="flex flex-col gap-3 rounded-2xl border border-white/10 bg-slate-900/60 p-4 lg:flex-row lg:items-center lg:justify-between"><div><h3 className="font-semibold">{loan.book?.title} → {loan.reader?.name}</h3><p className="text-sm text-slate-300">Empréstimo: {loan.loanDate} • Prevista: {loan.dueDate}</p></div><button onClick={() => returnLoan(loan.id)} className="inline-flex items-center gap-2 rounded-2xl bg-white/10 px-4 py-2 font-medium hover:bg-white/15 disabled:opacity-60" disabled={busy}><RotateCcw size={16} /> Devolver</button></div>)} empty="Nenhum empréstimo ativo." />
-        </Section>
-
-        <Section title="Empréstimos atrasados" icon={<CircleAlert size={18} />} className="xl:col-span-2">
-          <List items={overdue.map((loan) => <div key={loan.id} className="rounded-2xl border border-rose-500/20 bg-rose-500/10 p-4"><h3 className="font-semibold text-rose-100">{loan.book?.title} → {loan.reader?.name}</h3><p className="text-sm text-rose-200">Prevista: {loan.dueDate} • Não devolvido</p></div>)} empty="Nenhum empréstimo atrasado." />
-        </Section>
-      </div>}
-    </main>
-  </div>;
+          <Panel title="Empréstimos atrasados" icon={AlertCircle} action={<span className="text-sm text-slate-400">{overdue.length} em atraso</span>}>
+            {loading ? <p className="text-slate-300">Carregando dados...</p> : overdue.length === 0 ? <p className="text-slate-400">Nenhum empréstimo atrasado. Tudo em dia.</p> : <div className="space-y-3">
+              {overdue.map((loan) => (
+                <article key={loan.id} className="rounded-2xl border border-amber-400/20 bg-amber-500/10 p-4">
+                  <div className="flex flex-col gap-1">
+                    <div className="font-semibold text-amber-100">{loan.livroTitulo}</div>
+                    <div className="text-sm text-amber-50/90">{loan.leitorNome}</div>
+                    <div className="text-sm text-amber-50/80">Previsto para {formatDate(loan.dataPrevistaDevolucao)}</div>
+                  </div>
+                </article>
+              ))}
+            </div>}
+          </Panel>
+        </div>
+      </main>
+    </div>
+  );
 }
-
-function Section({ title, icon, children, className = '' }) {
-  return <section className={`rounded-3xl border border-white/10 bg-white/5 p-6 shadow-xl backdrop-blur ${className}`}>
-    <div className="mb-5 flex items-center gap-2 text-lg font-semibold">{icon}{title}</div>
-    {children}
-  </section>;
-}
-
-function Field({ label, ...props }) {
-  return <label className="grid gap-2 text-sm text-slate-300"><span>{label}</span><input {...props} className="rounded-2xl border border-white/10 bg-slate-950/70 px-4 py-3 text-white outline-none transition placeholder:text-slate-500 focus:border-blue-400/60" /></label>;
-}
-
-function Select({ label, options, placeholder, ...props }) {
-  return <label className="grid gap-2 text-sm text-slate-300"><span>{label}</span><select {...props} className="rounded-2xl border border-white/10 bg-slate-950/70 px-4 py-3 text-white outline-none transition focus:border-blue-400/60"><option value="">{placeholder}</option>{options.map((opt) => <option key={opt.value} value={opt.value}>{opt.label}</option>)}</select></label>;
-}
-
-function List({ items, empty }) {
-  if (!items.length) return <div className="rounded-2xl border border-dashed border-white/15 bg-slate-950/40 p-6 text-slate-400">{empty}</div>;
-  return <div className="grid gap-3">{items}</div>;
-}
-
-export default App;

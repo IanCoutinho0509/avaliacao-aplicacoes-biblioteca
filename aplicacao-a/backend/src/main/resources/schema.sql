@@ -6,9 +6,9 @@ CREATE TABLE IF NOT EXISTS livros (
     quantidade_exemplares INT NOT NULL,
     exemplares_disponiveis INT NOT NULL,
     PRIMARY KEY (id),
-    CONSTRAINT chk_livros_quantidade CHECK (quantidade_exemplares >= 0),
-    CONSTRAINT chk_livros_disponiveis CHECK (exemplares_disponiveis >= 0),
-    CONSTRAINT chk_livros_disponiveis_menor_igual CHECK (exemplares_disponiveis <= quantidade_exemplares)
+    CONSTRAINT chk_livros_quantidades CHECK (
+        quantidade_exemplares >= 0 AND exemplares_disponiveis >= 0 AND exemplares_disponiveis <= quantidade_exemplares
+    )
 );
 
 CREATE TABLE IF NOT EXISTS leitores (
@@ -16,7 +16,7 @@ CREATE TABLE IF NOT EXISTS leitores (
     nome VARCHAR(200) NOT NULL,
     email VARCHAR(255) NOT NULL,
     PRIMARY KEY (id),
-    UNIQUE KEY uk_leitores_email (email)
+    CONSTRAINT uk_leitores_email UNIQUE (email)
 );
 
 CREATE TABLE IF NOT EXISTS emprestimos (
@@ -28,5 +28,6 @@ CREATE TABLE IF NOT EXISTS emprestimos (
     data_devolucao DATE NULL,
     PRIMARY KEY (id),
     CONSTRAINT fk_emprestimos_livro FOREIGN KEY (livro_id) REFERENCES livros (id),
-    CONSTRAINT fk_emprestimos_leitor FOREIGN KEY (leitor_id) REFERENCES leitores (id)
+    CONSTRAINT fk_emprestimos_leitor FOREIGN KEY (leitor_id) REFERENCES leitores (id),
+    CONSTRAINT chk_emprestimos_datas CHECK (data_prevista_devolucao >= data_emprestimo)
 );

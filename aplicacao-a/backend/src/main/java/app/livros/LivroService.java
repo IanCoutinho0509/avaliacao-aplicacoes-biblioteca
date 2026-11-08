@@ -3,40 +3,29 @@ package app.livros;
 import java.util.List;
 
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import lombok.RequiredArgsConstructor;
 
 @Service
+@RequiredArgsConstructor
 public class LivroService {
 
-    private final LivroRepository repository;
+    private final LivroRepository livroRepository;
 
-    public LivroService(LivroRepository repository) {
-        this.repository = repository;
+    @Transactional(readOnly = true)
+    public List<LivroResponse> listar() {
+        return livroRepository.findAll().stream().map(LivroResponse::fromEntity).toList();
     }
 
-    public LivroResponse criar(LivroRequest request) {
+    @Transactional
+    public LivroResponse cadastrar(LivroRequest request) {
         Livro livro = new Livro();
         livro.setTitulo(request.titulo());
         livro.setAutor(request.autor());
         livro.setAno(request.ano());
         livro.setQuantidadeExemplares(request.quantidadeExemplares());
         livro.setExemplaresDisponiveis(request.quantidadeExemplares());
-        livro = repository.save(livro);
-        return toResponse(livro);
-    }
-
-    public List<LivroResponse> listar() {
-        return repository.findAll().stream().map(this::toResponse).toList();
-    }
-
-    public Livro getReferencia(Long id) {
-        return repository.findById(id).orElseThrow(() -> new jakarta.persistence.EntityNotFoundException("Livro não encontrado"));
-    }
-
-    public void salvar(Livro livro) {
-        repository.save(livro);
-    }
-
-    private LivroResponse toResponse(Livro livro) {
-        return new LivroResponse(livro.getId(), livro.getTitulo(), livro.getAutor(), livro.getAno(), livro.getQuantidadeExemplares(), livro.getExemplaresDisponiveis());
+        return LivroResponse.fromEntity(livroRepository.save(livro));
     }
 }

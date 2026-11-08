@@ -1,423 +1,174 @@
-import { useEffect, useMemo, useState } from 'react';
-import { AlertCircle, BookOpen, CalendarDays, CheckCircle2, ChevronRight, ClipboardList, Loader2, RotateCcw, UserRound, Users, XCircle } from 'lucide-react';
+import React, { useEffect, useMemo, useState } from 'react';
+import { BookOpen, CalendarDays, CheckCircle2, CircleAlert, Loader2, RefreshCw, RotateCcw, Search, UserRound, LibraryBig } from 'lucide-react';
 
-const API = '/api';
+const initialBook = { title: '', author: '', year: '', quantity: '' };
+const initialReader = { name: '', email: '' };
+const initialLoan = { bookId: '', readerId: '' };
 
-const initialLivro = {
-  titulo: '',
-  autor: '',
-  ano: '',
-  quantidadeExemplares: '',
-};
-
-const initialLeitor = {
-  nome: '',
-  email: '',
-};
-
-const initialEmprestimo = {
-  livroId: '',
-  leitorId: '',
-};
-
-function formatDate(value) {
-  if (!value) return '—';
-  const date = new Date(`${value}T00:00:00`);
-  return new Intl.DateTimeFormat('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' }).format(date);
-}
-
-function parseError(error, fallback = 'Não foi possível concluir a operação.') {
-  if (!error) return fallback;
-  if (typeof error === 'string') return error;
-  if (error.message) return error.message;
-  return fallback;
-}
-
-async function request(path, options = {}) {
-  const response = await fetch(`${API}${path}`, {
-    headers: {
-      'Content-Type': 'application/json',
-      ...(options.headers || {}),
-    },
+async function api(path, options = {}) {
+  const response = await fetch(`/api${path}`, {
+    headers: { 'Content-Type': 'application/json', ...(options.headers || {}) },
     ...options,
   });
-
-  const contentType = response.headers.get('content-type') || '';
-  const body = contentType.includes('application/json') ? await response.json().catch(() => null) : await response.text();
-
+  const text = await response.text();
+  const body = text ? JSON.parse(text) : null;
   if (!response.ok) {
-    const message =
-      body?.message ||
-      body?.error ||
-      (Array.isArray(body?.errors) && body.errors.map((e) => e.defaultMessage || e.message).filter(Boolean).join('; ')) ||
-      (typeof body === 'string' && body) ||
-      `Erro HTTP ${response.status}`;
-    throw new Error(message);
+    throw new Error(body?.message || 'Falha na requisição');
   }
-
   return body;
 }
 
-function Section({ icon: Icon, title, subtitle, children, action }) {
-  return (
-    <section className="rounded-3xl border border-white/10 bg-slate-900/70 p-6 shadow-2xl shadow-slate-950/30 backdrop-blur">
-      <div className="mb-5 flex items-start justify-between gap-4">
-        <div>
-          <div className="mb-2 inline-flex items-center gap-2 rounded-full border border-cyan-400/20 bg-cyan-400/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.2em] text-cyan-200">
-            <Icon className="h-3.5 w-3.5" />
-            Biblioteca
-          </div>
-          <h2 className="text-xl font-semibold text-white">{title}</h2>
-          {subtitle && <p className="mt-1 text-sm text-slate-300">{subtitle}</p>}
-        </div>
-        {action}
-      </div>
-      {children}
-    </section>
-  );
-}
-
-function Field({ label, children, hint }) {
-  return (
-    <label className="block">
-      <span className="mb-2 block text-sm font-medium text-slate-200">{label}</span>
-      {children}
-      {hint && <span className="mt-2 block text-xs text-slate-400">{hint}</span>}
-    </label>
-  );
-}
-
 function App() {
-  const [livros, setLivros] = useState([]);
-  const [leitores, setLeitores] = useState([]);
-  const [emprestimos, setEmprestimos] = useState([]);
-  const [atrasados, setAtrasados] = useState([]);
+  const [books, setBooks] = useState([]);
+  const [readers, setReaders] = useState([]);
+  const [loans, setLoans] = useState([]);
+  const [overdue, setOverdue] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState('');
-  const [success, setSuccess] = useState('');
-  const [livroForm, setLivroForm] = useState(initialLivro);
-  const [leitorForm, setLeitorForm] = useState(initialLeitor);
-  const [emprestimoForm, setEmprestimoForm] = useState(initialEmprestimo);
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState(null);
+  const [error, setError] = useState(null);
+  const [bookForm, setBookForm] = useState(initialBook);
+  const [readerForm, setReaderForm] = useState(initialReader);
+  const [loanForm, setLoanForm] = useState(initialLoan);
 
-  const stats = useMemo(() => [
-    { label: 'Livros cadastrados', value: livros.length, icon: BookOpen },
-    { label: 'Leitores cadastrados', value: leitores.length, icon: Users },
-    { label: 'Empréstimos ativos', value: emprestimos.filter((e) => !e.dataDevolucao).length, icon: ClipboardList },
-    { label: 'Atrasados', value: atrasados.length, icon: CalendarDays },
-  ], [livros, leitores, emprestimos, atrasados]);
-
-  async function loadAll() {
+  const loadAll = async () => {
     setLoading(true);
-    setError('');
+    setError(null);
     try {
-      const [livrosData, leitoresData, emprestimosData, atrasadosData] = await Promise.all([
-        request('/livros'),
-        request('/leitores'),
-        request('/emprestimos'),
-        request('/emprestimos/atrasados'),
+      const [b, r, l, o] = await Promise.all([
+        api('/books'),
+        api('/readers'),
+        api('/loans'),
+        api('/loans/overdue'),
       ]);
-      setLivros(livrosData);
-      setLeitores(leitoresData);
-      setEmprestimos(emprestimosData);
-      setAtrasados(atrasadosData);
-    } catch (err) {
-      setError(parseError(err));
+      setBooks(b);
+      setReaders(r);
+      setLoans(l);
+      setOverdue(o);
+    } catch (e) {
+      setError(e.message);
     } finally {
       setLoading(false);
     }
-  }
+  };
 
-  useEffect(() => {
-    loadAll();
-  }, []);
+  useEffect(() => { loadAll(); }, []);
 
-  async function handleCreateLivro(e) {
+  const availableBooks = useMemo(() => books.filter((b) => b.availableQuantity > 0), [books]);
+  const activeLoans = useMemo(() => loans.filter((l) => !l.returnDate), [loans]);
+
+  const submitBook = async (e) => {
     e.preventDefault();
-    setSaving(true);
-    setError('');
-    setSuccess('');
+    setBusy(true); setError(null); setMessage(null);
     try {
-      await request('/livros', { method: 'POST', body: JSON.stringify({ ...livroForm, ano: Number(livroForm.ano), quantidadeExemplares: Number(livroForm.quantidadeExemplares) }) });
-      setLivroForm(initialLivro);
-      setSuccess('Livro cadastrado com sucesso.');
-      await loadAll();
-    } catch (err) {
-      setError(parseError(err));
-    } finally {
-      setSaving(false);
-    }
-  }
+      await api('/books', { method: 'POST', body: JSON.stringify({ ...bookForm, year: Number(bookForm.year), quantity: Number(bookForm.quantity) }) });
+      setBookForm(initialBook); setMessage('Livro cadastrado com sucesso.'); await loadAll();
+    } catch (e) { setError(e.message); }
+    finally { setBusy(false); }
+  };
 
-  async function handleCreateLeitor(e) {
+  const submitReader = async (e) => {
     e.preventDefault();
-    setSaving(true);
-    setError('');
-    setSuccess('');
-    try {
-      await request('/leitores', { method: 'POST', body: JSON.stringify(leitorForm) });
-      setLeitorForm(initialLeitor);
-      setSuccess('Leitor cadastrado com sucesso.');
-      await loadAll();
-    } catch (err) {
-      setError(parseError(err));
-    } finally {
-      setSaving(false);
-    }
-  }
+    setBusy(true); setError(null); setMessage(null);
+    try { await api('/readers', { method: 'POST', body: JSON.stringify(readerForm) }); setReaderForm(initialReader); setMessage('Leitor cadastrado com sucesso.'); await loadAll(); }
+    catch (e) { setError(e.message); }
+    finally { setBusy(false); }
+  };
 
-  async function handleCreateEmprestimo(e) {
+  const submitLoan = async (e) => {
     e.preventDefault();
-    setSaving(true);
-    setError('');
-    setSuccess('');
-    try {
-      await request('/emprestimos', { method: 'POST', body: JSON.stringify({ livroId: Number(emprestimoForm.livroId), leitorId: Number(emprestimoForm.leitorId) }) });
-      setEmprestimoForm(initialEmprestimo);
-      setSuccess('Empréstimo registrado com sucesso.');
-      await loadAll();
-    } catch (err) {
-      setError(parseError(err));
-    } finally {
-      setSaving(false);
-    }
-  }
+    setBusy(true); setError(null); setMessage(null);
+    try { await api('/loans', { method: 'POST', body: JSON.stringify({ bookId: Number(loanForm.bookId), readerId: Number(loanForm.readerId) }) }); setLoanForm(initialLoan); setMessage('Empréstimo registrado.'); await loadAll(); }
+    catch (e) { setError(e.message); }
+    finally { setBusy(false); }
+  };
 
-  async function devolver(id) {
-    setSaving(true);
-    setError('');
-    setSuccess('');
-    try {
-      await request(`/emprestimos/${id}/devolucao`, { method: 'PATCH' });
-      setSuccess('Devolução registrada com sucesso.');
-      await loadAll();
-    } catch (err) {
-      setError(parseError(err));
-    } finally {
-      setSaving(false);
-    }
-  }
+  const returnLoan = async (id) => {
+    setBusy(true); setError(null); setMessage(null);
+    try { await api(`/loans/${id}/return`, { method: 'POST' }); setMessage('Devolução registrada.'); await loadAll(); }
+    catch (e) { setError(e.message); }
+    finally { setBusy(false); }
+  };
 
-  return (
-    <div className="min-h-screen bg-[radial-gradient(circle_at_top,_rgba(34,211,238,0.18),_transparent_35%),linear-gradient(180deg,#020617_0%,#0f172a_45%,#111827_100%)] text-slate-100">
-      <div className="mx-auto flex max-w-7xl flex-col gap-6 px-4 py-8 sm:px-6 lg:px-8">
-        <header className="overflow-hidden rounded-[2rem] border border-white/10 bg-white/5 p-6 shadow-2xl shadow-black/20 backdrop-blur md:p-8">
-          <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
-            <div className="max-w-3xl">
-              <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-cyan-400/20 bg-cyan-400/10 px-4 py-2 text-sm font-semibold text-cyan-100">
-                <BookOpen className="h-4 w-4" />
-                Sistema web de biblioteca
-              </div>
-              <h1 className="text-3xl font-bold tracking-tight text-white md:text-5xl">
-                Cadastre livros e leitores, controle empréstimos e acompanhe atrasos.
-              </h1>
-              <p className="mt-4 max-w-2xl text-base leading-7 text-slate-300 md:text-lg">
-                A interface reúne as operações principais da biblioteca em um painel único, com feedback imediato para validação, limites de negócio e devoluções.
-              </p>
-            </div>
-            <button
-              onClick={loadAll}
-              className="inline-flex items-center justify-center gap-2 rounded-2xl border border-cyan-400/30 bg-cyan-400/15 px-4 py-3 text-sm font-semibold text-cyan-50 transition hover:bg-cyan-400/25 disabled:opacity-60"
-              disabled={loading}
-            >
-              {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RotateCcw className="h-4 w-4" />}
-              Atualizar dados
-            </button>
-          </div>
-
-          <div className="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-            {stats.map(({ label, value, icon: Icon }) => (
-              <div key={label} className="rounded-2xl border border-white/10 bg-slate-950/40 p-4">
-                <div className="mb-3 inline-flex rounded-xl bg-cyan-400/10 p-2 text-cyan-200">
-                  <Icon className="h-5 w-5" />
-                </div>
-                <div className="text-3xl font-bold text-white">{value}</div>
-                <div className="mt-1 text-sm text-slate-300">{label}</div>
-              </div>
-            ))}
-          </div>
-        </header>
-
-        {(error || success) && (
-          <div className={`flex items-start gap-3 rounded-2xl border p-4 ${error ? 'border-rose-400/30 bg-rose-500/10 text-rose-100' : 'border-emerald-400/30 bg-emerald-500/10 text-emerald-100'}`}>
-            {error ? <AlertCircle className="mt-0.5 h-5 w-5 shrink-0" /> : <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0" />}
-            <div className="text-sm leading-6">{error || success}</div>
-          </div>
-        )}
-
-        <div className="grid gap-6 xl:grid-cols-2">
-          <Section icon={BookOpen} title="Cadastro de livros" subtitle="Informe título, autor, ano e quantidade de exemplares disponíveis.">
-            <form onSubmit={handleCreateLivro} className="grid gap-4">
-              <div className="grid gap-4 md:grid-cols-2">
-                <Field label="Título">
-                  <input className="w-full rounded-2xl border border-white/10 bg-slate-950/60 px-4 py-3 text-white outline-none ring-0 placeholder:text-slate-500 focus:border-cyan-400/60" value={livroForm.titulo} onChange={(e) => setLivroForm((s) => ({ ...s, titulo: e.target.value }))} placeholder="Dom Casmurro" />
-                </Field>
-                <Field label="Autor">
-                  <input className="w-full rounded-2xl border border-white/10 bg-slate-950/60 px-4 py-3 text-white outline-none placeholder:text-slate-500 focus:border-cyan-400/60" value={livroForm.autor} onChange={(e) => setLivroForm((s) => ({ ...s, autor: e.target.value }))} placeholder="Machado de Assis" />
-                </Field>
-                <Field label="Ano">
-                  <input type="number" className="w-full rounded-2xl border border-white/10 bg-slate-950/60 px-4 py-3 text-white outline-none placeholder:text-slate-500 focus:border-cyan-400/60" value={livroForm.ano} onChange={(e) => setLivroForm((s) => ({ ...s, ano: e.target.value }))} placeholder="1899" />
-                </Field>
-                <Field label="Quantidade de exemplares">
-                  <input type="number" min="1" className="w-full rounded-2xl border border-white/10 bg-slate-950/60 px-4 py-3 text-white outline-none placeholder:text-slate-500 focus:border-cyan-400/60" value={livroForm.quantidadeExemplares} onChange={(e) => setLivroForm((s) => ({ ...s, quantidadeExemplares: e.target.value }))} placeholder="3" />
-                </Field>
-              </div>
-              <button className="inline-flex items-center justify-center gap-2 rounded-2xl bg-cyan-500 px-4 py-3 font-semibold text-slate-950 transition hover:bg-cyan-400 disabled:opacity-60" disabled={saving}>
-                {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <ChevronRight className="h-4 w-4" />}
-                Cadastrar livro
-              </button>
-            </form>
-          </Section>
-
-          <Section icon={UserRound} title="Cadastro de leitores" subtitle="Cada leitor possui nome e e-mail únicos. ">
-            <form onSubmit={handleCreateLeitor} className="grid gap-4">
-              <Field label="Nome">
-                <input className="w-full rounded-2xl border border-white/10 bg-slate-950/60 px-4 py-3 text-white outline-none placeholder:text-slate-500 focus:border-cyan-400/60" value={leitorForm.nome} onChange={(e) => setLeitorForm((s) => ({ ...s, nome: e.target.value }))} placeholder="Maria Silva" />
-              </Field>
-              <Field label="E-mail">
-                <input type="email" className="w-full rounded-2xl border border-white/10 bg-slate-950/60 px-4 py-3 text-white outline-none placeholder:text-slate-500 focus:border-cyan-400/60" value={leitorForm.email} onChange={(e) => setLeitorForm((s) => ({ ...s, email: e.target.value }))} placeholder="maria@exemplo.com" />
-              </Field>
-              <button className="inline-flex items-center justify-center gap-2 rounded-2xl bg-cyan-500 px-4 py-3 font-semibold text-slate-950 transition hover:bg-cyan-400 disabled:opacity-60" disabled={saving}>
-                {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <ChevronRight className="h-4 w-4" />}
-                Cadastrar leitor
-              </button>
-            </form>
-          </Section>
+  return <div className="min-h-screen bg-slate-950 text-slate-100">
+    <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,_rgba(59,130,246,0.25),_transparent_40%),radial-gradient(circle_at_bottom_right,_rgba(16,185,129,0.12),_transparent_35%)]" />
+    <main className="relative mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
+      <header className="mb-8 flex flex-col gap-4 rounded-3xl border border-white/10 bg-white/5 p-6 shadow-2xl backdrop-blur xl:flex-row xl:items-end xl:justify-between">
+        <div>
+          <div className="mb-3 inline-flex items-center gap-2 rounded-full bg-blue-500/15 px-3 py-1 text-sm text-blue-200"><LibraryBig size={16} /> Biblioteca</div>
+          <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">Cadastro e empréstimos em um só lugar</h1>
+          <p className="mt-2 max-w-2xl text-slate-300">Gerencie livros, leitores, empréstimos e devoluções com retorno imediato das regras de negócio.</p>
         </div>
+        <button onClick={loadAll} className="inline-flex items-center justify-center gap-2 rounded-2xl border border-white/10 bg-white/10 px-4 py-3 font-medium text-white transition hover:bg-white/15 disabled:opacity-60" disabled={loading || busy}><RefreshCw size={18} className={loading ? 'animate-spin' : ''} /> Atualizar</button>
+      </header>
 
-        <div className="grid gap-6 xl:grid-cols-[1.15fr_0.85fr]">
-          <Section icon={ClipboardList} title="Registrar empréstimo" subtitle="Selecione um livro e um leitor. O sistema valida exemplar disponível e limite de 3 empréstimos ativos por leitor.">
-            <form onSubmit={handleCreateEmprestimo} className="grid gap-4 md:grid-cols-2">
-              <Field label="Livro">
-                <select className="w-full rounded-2xl border border-white/10 bg-slate-950/60 px-4 py-3 text-white outline-none focus:border-cyan-400/60" value={emprestimoForm.livroId} onChange={(e) => setEmprestimoForm((s) => ({ ...s, livroId: e.target.value }))}>
-                  <option value="">Selecione</option>
-                  {livros.map((livro) => (
-                    <option key={livro.id} value={livro.id}>
-                      {livro.titulo} — {livro.autor}
-                    </option>
-                  ))}
-                </select>
-              </Field>
-              <Field label="Leitor">
-                <select className="w-full rounded-2xl border border-white/10 bg-slate-950/60 px-4 py-3 text-white outline-none focus:border-cyan-400/60" value={emprestimoForm.leitorId} onChange={(e) => setEmprestimoForm((s) => ({ ...s, leitorId: e.target.value }))}>
-                  <option value="">Selecione</option>
-                  {leitores.map((leitor) => (
-                    <option key={leitor.id} value={leitor.id}>
-                      {leitor.nome} — {leitor.email}
-                    </option>
-                  ))}
-                </select>
-              </Field>
-              <div className="md:col-span-2">
-                <button className="inline-flex items-center justify-center gap-2 rounded-2xl bg-cyan-500 px-4 py-3 font-semibold text-slate-950 transition hover:bg-cyan-400 disabled:opacity-60" disabled={saving || !livros.length || !leitores.length}>
-                  {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <ChevronRight className="h-4 w-4" />}
-                  Registrar empréstimo
-                </button>
-              </div>
-            </form>
-          </Section>
+      {(message || error) && <div className={`mb-6 rounded-2xl border p-4 ${error ? 'border-rose-500/30 bg-rose-500/10 text-rose-100' : 'border-emerald-500/30 bg-emerald-500/10 text-emerald-100'}`}><div className="flex items-start gap-3"><div className="mt-0.5">{error ? <CircleAlert size={20} /> : <CheckCircle2 size={20} />}</div><p>{error || message}</p></div></div>}
 
-          <Section icon={CalendarDays} title="Empréstimos atrasados" subtitle="Empréstimos ativos com data prevista de devolução vencida.">
-            <div className="space-y-3">
-              {atrasados.length === 0 ? (
-                <div className="rounded-2xl border border-dashed border-white/10 bg-slate-950/40 p-5 text-sm text-slate-300">
-                  Nenhum empréstimo atrasado no momento.
-                </div>
-              ) : (
-                atrasados.map((item) => (
-                  <div key={item.id} className="rounded-2xl border border-rose-400/20 bg-rose-500/10 p-4">
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <div className="font-semibold text-white">{item.livro?.titulo}</div>
-                        <div className="mt-1 text-sm text-rose-100/80">Leitor: {item.leitor?.nome}</div>
-                      </div>
-                      <span className="rounded-full border border-rose-300/20 bg-rose-400/10 px-3 py-1 text-xs font-semibold text-rose-100">Atrasado</span>
-                    </div>
-                    <div className="mt-3 text-sm text-rose-100/80">Prevista para devolução em {formatDate(item.dataPrevistaDevolucao)}</div>
-                  </div>
-                ))
-              )}
-            </div>
-          </Section>
-        </div>
-
-        <div className="grid gap-6 xl:grid-cols-2">
-          <Section icon={BookOpen} title="Livros cadastrados" subtitle="Visualize os títulos e a quantidade de exemplares informada.">
-            <div className="space-y-3">
-              {livros.length === 0 ? (
-                <div className="rounded-2xl border border-dashed border-white/10 bg-slate-950/40 p-5 text-sm text-slate-300">Nenhum livro cadastrado.</div>
-              ) : (
-                livros.map((livro) => (
-                  <div key={livro.id} className="rounded-2xl border border-white/10 bg-slate-950/40 p-4">
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <div className="font-semibold text-white">{livro.titulo}</div>
-                        <div className="mt-1 text-sm text-slate-300">{livro.autor} • {livro.ano}</div>
-                      </div>
-                      <span className="rounded-full border border-cyan-400/20 bg-cyan-400/10 px-3 py-1 text-xs font-semibold text-cyan-100">{livro.quantidadeExemplares} exemplares</span>
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
-          </Section>
-
-          <Section icon={Users} title="Leitores cadastrados" subtitle="Lista de leitores registrados no sistema.">
-            <div className="space-y-3">
-              {leitores.length === 0 ? (
-                <div className="rounded-2xl border border-dashed border-white/10 bg-slate-950/40 p-5 text-sm text-slate-300">Nenhum leitor cadastrado.</div>
-              ) : (
-                leitores.map((leitor) => (
-                  <div key={leitor.id} className="rounded-2xl border border-white/10 bg-slate-950/40 p-4">
-                    <div className="font-semibold text-white">{leitor.nome}</div>
-                    <div className="mt-1 text-sm text-slate-300">{leitor.email}</div>
-                  </div>
-                ))
-              )}
-            </div>
-          </Section>
-        </div>
-
-        <Section icon={ClipboardList} title="Empréstimos e devoluções" subtitle="Acompanhe empréstimos ativos e conclua a devolução quando necessário.">
-          <div className="space-y-3">
-            {emprestimos.length === 0 ? (
-              <div className="rounded-2xl border border-dashed border-white/10 bg-slate-950/40 p-5 text-sm text-slate-300">Nenhum empréstimo registrado.</div>
-            ) : (
-              emprestimos.map((emprestimo) => {
-                const devolvido = Boolean(emprestimo.dataDevolucao);
-                return (
-                  <div key={emprestimo.id} className="rounded-2xl border border-white/10 bg-slate-950/40 p-4">
-                    <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-                      <div className="space-y-1">
-                        <div className="font-semibold text-white">{emprestimo.livro?.titulo}</div>
-                        <div className="text-sm text-slate-300">Leitor: {emprestimo.leitor?.nome}</div>
-                        <div className="text-sm text-slate-400">Empréstimo: {formatDate(emprestimo.dataEmprestimo)} • Previsto: {formatDate(emprestimo.dataPrevistaDevolucao)}{devolvido ? ` • Devolvido: ${formatDate(emprestimo.dataDevolucao)}` : ''}</div>
-                      </div>
-                      <div className="flex flex-wrap items-center gap-3">
-                        <span className={`rounded-full px-3 py-1 text-xs font-semibold ${devolvido ? 'border border-emerald-400/20 bg-emerald-400/10 text-emerald-100' : 'border border-amber-400/20 bg-amber-400/10 text-amber-100'}`}>
-                          {devolvido ? 'Devolvido' : 'Ativo'}
-                        </span>
-                        {!devolvido && (
-                          <button onClick={() => devolver(emprestimo.id)} className="inline-flex items-center gap-2 rounded-2xl border border-white/10 bg-white/5 px-4 py-2 text-sm font-semibold text-white transition hover:bg-white/10 disabled:opacity-60" disabled={saving}>
-                            <RotateCcw className="h-4 w-4" />
-                            Registrar devolução
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                );
-              })
-            )}
-          </div>
+      {loading ? <div className="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/5 p-6 text-slate-300"><Loader2 className="animate-spin" /> Carregando dados...</div> : <div className="grid gap-6 xl:grid-cols-2">
+        <Section title="Cadastrar livro" icon={<BookOpen size={18} />}>
+          <form onSubmit={submitBook} className="grid gap-4 sm:grid-cols-2">
+            <Field label="Título" value={bookForm.title} onChange={(e) => setBookForm({ ...bookForm, title: e.target.value })} />
+            <Field label="Autor" value={bookForm.author} onChange={(e) => setBookForm({ ...bookForm, author: e.target.value })} />
+            <Field label="Ano" type="number" value={bookForm.year} onChange={(e) => setBookForm({ ...bookForm, year: e.target.value })} />
+            <Field label="Quantidade" type="number" value={bookForm.quantity} onChange={(e) => setBookForm({ ...bookForm, quantity: e.target.value })} />
+            <button className="sm:col-span-2 rounded-2xl bg-blue-500 px-4 py-3 font-semibold text-white transition hover:bg-blue-400 disabled:opacity-60" disabled={busy}>Salvar livro</button>
+          </form>
         </Section>
 
-        <footer className="pb-2 text-center text-sm text-slate-400">
-          Sistema de biblioteca com foco em usabilidade, retorno imediato e tratamento de erros de regra de negócio.
-        </footer>
-      </div>
-    </div>
-  );
+        <Section title="Cadastrar leitor" icon={<UserRound size={18} />}>
+          <form onSubmit={submitReader} className="grid gap-4 sm:grid-cols-2">
+            <Field label="Nome" value={readerForm.name} onChange={(e) => setReaderForm({ ...readerForm, name: e.target.value })} />
+            <Field label="E-mail" type="email" value={readerForm.email} onChange={(e) => setReaderForm({ ...readerForm, email: e.target.value })} />
+            <button className="sm:col-span-2 rounded-2xl bg-emerald-500 px-4 py-3 font-semibold text-white transition hover:bg-emerald-400 disabled:opacity-60" disabled={busy}>Salvar leitor</button>
+          </form>
+        </Section>
+
+        <Section title="Registrar empréstimo" icon={<CalendarDays size={18} />} className="xl:col-span-2">
+          <form onSubmit={submitLoan} className="grid gap-4 lg:grid-cols-[1fr_1fr_auto]">
+            <Select label={`Livro disponível (${availableBooks.length})`} value={loanForm.bookId} onChange={(e) => setLoanForm({ ...loanForm, bookId: e.target.value })} options={availableBooks.map((b) => ({ value: b.id, label: `${b.title} • disponível: ${b.availableQuantity}` }))} placeholder="Selecione um livro" />
+            <Select label={`Leitor (${readers.length})`} value={loanForm.readerId} onChange={(e) => setLoanForm({ ...loanForm, readerId: e.target.value })} options={readers.map((r) => ({ value: r.id, label: `${r.name} • ${r.email}` }))} placeholder="Selecione um leitor" />
+            <button className="rounded-2xl bg-indigo-500 px-5 py-3 font-semibold text-white transition hover:bg-indigo-400 disabled:opacity-60" disabled={busy || availableBooks.length === 0 || readers.length === 0}>Emprestar</button>
+          </form>
+        </Section>
+
+        <Section title="Livros" icon={<BookOpen size={18} />}>
+          <List items={books.map((b) => <div key={b.id} className="rounded-2xl border border-white/10 bg-slate-900/60 p-4"><div className="flex items-start justify-between gap-3"><div><h3 className="font-semibold">{b.title}</h3><p className="text-sm text-slate-300">{b.author} • {b.year}</p></div><span className={`rounded-full px-3 py-1 text-xs font-medium ${b.availableQuantity > 0 ? 'bg-emerald-500/15 text-emerald-200' : 'bg-rose-500/15 text-rose-200'}`}>{b.availableQuantity}/{b.quantity}</span></div></div>)} empty="Nenhum livro cadastrado." />
+        </Section>
+
+        <Section title="Leitores" icon={<UserRound size={18} />}>
+          <List items={readers.map((r) => <div key={r.id} className="rounded-2xl border border-white/10 bg-slate-900/60 p-4"><h3 className="font-semibold">{r.name}</h3><p className="text-sm text-slate-300">{r.email}</p></div>)} empty="Nenhum leitor cadastrado." />
+        </Section>
+
+        <Section title="Empréstimos ativos" icon={<Search size={18} />} className="xl:col-span-2">
+          <List items={activeLoans.map((loan) => <div key={loan.id} className="flex flex-col gap-3 rounded-2xl border border-white/10 bg-slate-900/60 p-4 lg:flex-row lg:items-center lg:justify-between"><div><h3 className="font-semibold">{loan.book?.title} → {loan.reader?.name}</h3><p className="text-sm text-slate-300">Empréstimo: {loan.loanDate} • Prevista: {loan.dueDate}</p></div><button onClick={() => returnLoan(loan.id)} className="inline-flex items-center gap-2 rounded-2xl bg-white/10 px-4 py-2 font-medium hover:bg-white/15 disabled:opacity-60" disabled={busy}><RotateCcw size={16} /> Devolver</button></div>)} empty="Nenhum empréstimo ativo." />
+        </Section>
+
+        <Section title="Empréstimos atrasados" icon={<CircleAlert size={18} />} className="xl:col-span-2">
+          <List items={overdue.map((loan) => <div key={loan.id} className="rounded-2xl border border-rose-500/20 bg-rose-500/10 p-4"><h3 className="font-semibold text-rose-100">{loan.book?.title} → {loan.reader?.name}</h3><p className="text-sm text-rose-200">Prevista: {loan.dueDate} • Não devolvido</p></div>)} empty="Nenhum empréstimo atrasado." />
+        </Section>
+      </div>}
+    </main>
+  </div>;
+}
+
+function Section({ title, icon, children, className = '' }) {
+  return <section className={`rounded-3xl border border-white/10 bg-white/5 p-6 shadow-xl backdrop-blur ${className}`}>
+    <div className="mb-5 flex items-center gap-2 text-lg font-semibold">{icon}{title}</div>
+    {children}
+  </section>;
+}
+
+function Field({ label, ...props }) {
+  return <label className="grid gap-2 text-sm text-slate-300"><span>{label}</span><input {...props} className="rounded-2xl border border-white/10 bg-slate-950/70 px-4 py-3 text-white outline-none transition placeholder:text-slate-500 focus:border-blue-400/60" /></label>;
+}
+
+function Select({ label, options, placeholder, ...props }) {
+  return <label className="grid gap-2 text-sm text-slate-300"><span>{label}</span><select {...props} className="rounded-2xl border border-white/10 bg-slate-950/70 px-4 py-3 text-white outline-none transition focus:border-blue-400/60"><option value="">{placeholder}</option>{options.map((opt) => <option key={opt.value} value={opt.value}>{opt.label}</option>)}</select></label>;
+}
+
+function List({ items, empty }) {
+  if (!items.length) return <div className="rounded-2xl border border-dashed border-white/15 bg-slate-950/40 p-6 text-slate-400">{empty}</div>;
+  return <div className="grid gap-3">{items}</div>;
 }
 
 export default App;

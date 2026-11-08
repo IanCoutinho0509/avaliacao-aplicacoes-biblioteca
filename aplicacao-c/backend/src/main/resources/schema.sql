@@ -1,29 +1,32 @@
-CREATE TABLE IF NOT EXISTS books (
+CREATE TABLE IF NOT EXISTS livros (
     id BIGINT NOT NULL AUTO_INCREMENT,
-    title VARCHAR(200) NOT NULL,
-    author VARCHAR(200) NOT NULL,
-    year INT NOT NULL,
-    quantity INT NOT NULL,
-    available_quantity INT NOT NULL,
-    PRIMARY KEY (id)
+    titulo VARCHAR(200) NOT NULL,
+    autor VARCHAR(200) NOT NULL,
+    ano INT NOT NULL,
+    quantidade_exemplares INT NOT NULL,
+    exemplares_disponiveis INT NOT NULL,
+    PRIMARY KEY (id),
+    CONSTRAINT chk_livros_quantidade CHECK (quantidade_exemplares >= 0),
+    CONSTRAINT chk_livros_disponiveis CHECK (exemplares_disponiveis >= 0),
+    CONSTRAINT chk_livros_disponiveis_menor_igual CHECK (exemplares_disponiveis <= quantidade_exemplares)
 );
 
-CREATE TABLE IF NOT EXISTS readers (
+CREATE TABLE IF NOT EXISTS leitores (
     id BIGINT NOT NULL AUTO_INCREMENT,
-    name VARCHAR(200) NOT NULL,
-    email VARCHAR(200) NOT NULL,
+    nome VARCHAR(200) NOT NULL,
+    email VARCHAR(255) NOT NULL,
     PRIMARY KEY (id),
-    UNIQUE KEY uk_readers_email (email)
+    UNIQUE KEY uk_leitores_email (email)
 );
 
-CREATE TABLE IF NOT EXISTS loans (
+CREATE TABLE IF NOT EXISTS emprestimos (
     id BIGINT NOT NULL AUTO_INCREMENT,
-    book_id BIGINT NOT NULL,
-    reader_id BIGINT NOT NULL,
-    loan_date DATE NOT NULL,
-    due_date DATE NOT NULL,
-    return_date DATE NULL,
+    livro_id BIGINT NOT NULL,
+    leitor_id BIGINT NOT NULL,
+    data_emprestimo DATE NOT NULL,
+    data_prevista_devolucao DATE NOT NULL,
+    data_devolucao DATE NULL,
     PRIMARY KEY (id),
-    CONSTRAINT fk_loans_book FOREIGN KEY (book_id) REFERENCES books (id),
-    CONSTRAINT fk_loans_reader FOREIGN KEY (reader_id) REFERENCES readers (id)
+    CONSTRAINT fk_emprestimos_livro FOREIGN KEY (livro_id) REFERENCES livros (id),
+    CONSTRAINT fk_emprestimos_leitor FOREIGN KEY (leitor_id) REFERENCES leitores (id)
 );

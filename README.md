@@ -5,7 +5,8 @@ Interação entre Agentes Inteligentes Baseados em Grandes Modelos de Linguagem"
 Araujo Coutinho no Bacharelado em Ciência da Computação da FFCLRP-USP, com orientação do Prof. Dr. Cléver Ricardo
 Guareis de Farias.
 
-As seis foram construídas a partir do mesmo enunciado. Cada uma está na sua pasta, identificada só pela letra:
+As seis foram construídas a partir do mesmo enunciado. As letras foram embaralhadas e não seguem nenhuma ordem, então nem a
+letra nem a sequência indicam como cada aplicação foi feita. Cada uma está na sua pasta, identificada só pela letra:
 
 - [Aplicação A](aplicacao-a)
 - [Aplicação B](aplicacao-b)

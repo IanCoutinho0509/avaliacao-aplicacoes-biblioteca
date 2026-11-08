@@ -2,44 +2,44 @@ package app.emprestimos;
 
 import java.util.List;
 
-import org.springframework.validation.annotation.Validated;
+import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
 import jakarta.validation.Valid;
+import lombok.RequiredArgsConstructor;
 
 @RestController
 @RequestMapping("/api/emprestimos")
-@Validated
+@RequiredArgsConstructor
 public class EmprestimoController {
 
-    private final EmprestimoService service;
-
-    public EmprestimoController(EmprestimoService service) {
-        this.service = service;
-    }
-
-    @PostMapping
-    public EmprestimoResponse criar(@Valid @RequestBody EmprestimoRequest request) {
-        return service.criar(request);
-    }
-
-    @PostMapping("/{id}/devolucao")
-    public EmprestimoResponse devolver(@PathVariable Long id) {
-        return service.devolver(id);
-    }
+    private final EmprestimoService emprestimoService;
 
     @GetMapping
     public List<EmprestimoResponse> listar() {
-        return service.listar();
+        return emprestimoService.listar();
     }
 
     @GetMapping("/atrasados")
-    public List<EmprestimoResponse> atrasados() {
-        return service.listarAtrasados();
+    public List<EmprestimoResponse> listarAtrasados() {
+        return emprestimoService.listarAtrasados();
+    }
+
+    @PostMapping
+    @ResponseStatus(HttpStatus.CREATED)
+    public EmprestimoResponse registrar(@Valid @RequestBody EmprestimoRequest request) {
+        return emprestimoService.registrar(request);
+    }
+
+    @PatchMapping("/{id}/devolver")
+    public EmprestimoResponse devolver(@PathVariable Long id) {
+        return emprestimoService.devolver(id);
     }
 }

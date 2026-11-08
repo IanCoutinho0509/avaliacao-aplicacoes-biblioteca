@@ -1,41 +1,40 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import { HashRouter, NavLink, Navigate, Route, Routes, useNavigate } from 'react-router-dom';
-import {
-  BookOpen,
-  BookPlus,
-  CircleAlert,
-  Clock3,
-  LoaderCircle,
-  Menu,
-  RefreshCcw,
-  RotateCcw,
-  ShieldAlert,
-  Users,
-} from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
+import { AlertCircle, BookOpen, CalendarDays, CheckCircle2, ChevronRight, ClipboardList, Loader2, RotateCcw, UserRound, Users, XCircle } from 'lucide-react';
 
-const API_BASE = '/api';
+const API = '/api';
 
-function extractMessage(payload, status) {
-  if (!payload) return `Erro HTTP ${status}`;
-  if (typeof payload === 'string') return payload;
-  if (typeof payload === 'object') {
-    if (payload.message) return payload.message;
-    if (payload.error) return payload.error;
-    if (payload.detail) return payload.detail;
-    if (Array.isArray(payload.errors) && payload.errors.length > 0) {
-      return payload.errors
-        .map((item) => {
-          if (typeof item === 'string') return item;
-          return item.defaultMessage || item.message || item.field || JSON.stringify(item);
-        })
-        .join(' • ');
-    }
-  }
-  return `Erro HTTP ${status}`;
+const initialLivro = {
+  titulo: '',
+  autor: '',
+  ano: '',
+  quantidadeExemplares: '',
+};
+
+const initialLeitor = {
+  nome: '',
+  email: '',
+};
+
+const initialEmprestimo = {
+  livroId: '',
+  leitorId: '',
+};
+
+function formatDate(value) {
+  if (!value) return '—';
+  const date = new Date(`${value}T00:00:00`);
+  return new Intl.DateTimeFormat('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' }).format(date);
+}
+
+function parseError(error, fallback = 'Não foi possível concluir a operação.') {
+  if (!error) return fallback;
+  if (typeof error === 'string') return error;
+  if (error.message) return error.message;
+  return fallback;
 }
 
 async function request(path, options = {}) {
-  const response = await fetch(`${API_BASE}${path}`, {
+  const response = await fetch(`${API}${path}`, {
     headers: {
       'Content-Type': 'application/json',
       ...(options.headers || {}),
@@ -44,252 +43,32 @@ async function request(path, options = {}) {
   });
 
   const contentType = response.headers.get('content-type') || '';
-  const payload = contentType.includes('application/json') ? await response.json().catch(() => null) : await response.text();
+  const body = contentType.includes('application/json') ? await response.json().catch(() => null) : await response.text();
 
   if (!response.ok) {
-    throw new Error(extractMessage(payload, response.status));
+    const message =
+      body?.message ||
+      body?.error ||
+      (Array.isArray(body?.errors) && body.errors.map((e) => e.defaultMessage || e.message).filter(Boolean).join('; ')) ||
+      (typeof body === 'string' && body) ||
+      `Erro HTTP ${response.status}`;
+    throw new Error(message);
   }
 
-  return payload;
+  return body;
 }
 
-function App() {
+function Section({ icon: Icon, title, subtitle, children, action }) {
   return (
-    <HashRouter>
-      <Routes>
-        <Route path="/" element={<Navigate to="/livros" replace />} />
-        <Route path="/*" element={<LibraryShell />} />
-      </Routes>
-    </HashRouter>
-  );
-}
-
-function LibraryShell() {
-  const nav = useNavigate();
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [stats, setStats] = useState({ books: [], readers: [], loans: [], overdue: [] });
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
-  const [refreshToken, setRefreshToken] = useState(0);
-
-  const loadAll = async () => {
-    setLoading(true);
-    setError('');
-    try {
-      const [books, readers, loans, overdue] = await Promise.all([
-        request('/livros'),
-        request('/leitores'),
-        request('/emprestimos'),
-        request('/emprestimos/atrasados'),
-      ]);
-      setStats({
-        books: Array.isArray(books) ? books : [],
-        readers: Array.isArray(readers) ? readers : [],
-        loans: Array.isArray(loans) ? loans : [],
-        overdue: Array.isArray(overdue) ? overdue : [],
-      });
-    } catch (e) {
-      setError(e.message || 'Não foi possível carregar os dados.');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    loadAll();
-  }, [refreshToken]);
-
-  const refresh = () => setRefreshToken((v) => v + 1);
-
-  const shared = { stats, loading, error, onReload: refresh, onSaved: refresh, navigate: nav };
-
-  return (
-    <div className="min-h-screen bg-slate-950 text-slate-100">
-      <div className="absolute inset-0 -z-10 bg-[radial-gradient(circle_at_top,_rgba(56,189,248,0.18),_transparent_34%),radial-gradient(circle_at_80%_20%,_rgba(168,85,247,0.16),_transparent_28%),linear-gradient(180deg,_rgba(15,23,42,1),_rgba(2,6,23,1))]" />
-
-      <header className="border-b border-white/10 bg-slate-950/70 backdrop-blur">
-        <div className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-4 py-4 sm:px-6 lg:px-8">
-          <button
-            type="button"
-            className="flex items-center gap-3 text-left"
-            onClick={() => nav('/livros')}
-          >
-            <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-cyan-400/15 text-cyan-300 ring-1 ring-cyan-300/20">
-              <BookOpen className="h-5 w-5" />
-            </div>
-            <div>
-              <div className="text-xs uppercase tracking-[0.25em] text-cyan-200/70">Biblioteca</div>
-              <h1 className="text-lg font-semibold text-white">Gestão de livros, leitores e empréstimos</h1>
-            </div>
-          </button>
-
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={refresh}
-              className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm font-medium text-slate-100 transition hover:bg-white/10"
-            >
-              <RefreshCcw className="h-4 w-4" />
-              Atualizar
-            </button>
-            <button
-              type="button"
-              onClick={() => setMobileMenuOpen((v) => !v)}
-              className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm font-medium text-slate-100 transition hover:bg-white/10 lg:hidden"
-            >
-              <Menu className="h-4 w-4" />
-              Menu
-            </button>
-          </div>
-        </div>
-
-        <nav className={`border-t border-white/10 ${mobileMenuOpen ? 'block' : 'hidden'} lg:block`}>
-          <div className="mx-auto flex max-w-7xl flex-col gap-2 px-4 py-3 sm:px-6 lg:flex-row lg:items-center lg:px-8">
-            <TopNav to="/livros" icon={BookOpen} label="Livros" />
-            <TopNav to="/leitores" icon={Users} label="Leitores" />
-            <TopNav to="/emprestimos" icon={RotateCcw} label="Empréstimos" />
-            <TopNav to="/atrasados" icon={Clock3} label="Atrasados" />
-            <div className="hidden lg:ml-auto lg:block">
-              <StatusPills stats={stats} />
-            </div>
-          </div>
-        </nav>
-      </header>
-
-      <main className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
-        <section className="mb-6 grid gap-4 lg:grid-cols-[1.4fr_0.6fr]">
-          <div className="rounded-3xl border border-white/10 bg-white/5 p-6 shadow-2xl shadow-cyan-950/20 backdrop-blur">
-            <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-              <div>
-                <div className="mb-2 inline-flex items-center gap-2 rounded-full border border-cyan-300/15 bg-cyan-300/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.24em] text-cyan-200">
-                  <ShieldAlert className="h-3.5 w-3.5" />
-                  Fluxo operacional
-                </div>
-                <h2 className="text-2xl font-semibold text-white sm:text-3xl">Controle tudo em um painel único</h2>
-                <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-300">
-                  Cadastre livros e leitores, registre empréstimos e devoluções, acompanhe a disponibilidade de exemplares
-                  e consulte automaticamente o que está atrasado.
-                </p>
-              </div>
-              <div className="grid grid-cols-3 gap-3 text-center text-sm">
-                <MiniMetric label="Livros" value={stats.books.length} tone="cyan" />
-                <MiniMetric label="Leitores" value={stats.readers.length} tone="violet" />
-                <MiniMetric label="Empréstimos" value={stats.loans.length} tone="emerald" />
-              </div>
-            </div>
-            {error ? (
-              <div className="mt-5 flex items-start gap-3 rounded-2xl border border-rose-400/20 bg-rose-500/10 px-4 py-3 text-sm text-rose-100">
-                <CircleAlert className="mt-0.5 h-5 w-5 shrink-0" />
-                <div>
-                  <div className="font-semibold">Não foi possível carregar os dados</div>
-                  <div className="text-rose-100/90">{error}</div>
-                </div>
-              </div>
-            ) : null}
-          </div>
-          <div className="rounded-3xl border border-white/10 bg-slate-900/70 p-6 backdrop-blur">
-            <h3 className="text-sm font-semibold uppercase tracking-[0.24em] text-slate-400">Atalhos</h3>
-            <div className="mt-4 grid gap-3">
-              <ShortcutCard title="Cadastrar um livro" description="Título, autor, ano e quantidade de exemplares." onClick={() => nav('/livros')} />
-              <ShortcutCard title="Cadastrar leitor" description="Nome e e-mail com validação visual e mensagens claras." onClick={() => nav('/leitores')} />
-              <ShortcutCard title="Registrar empréstimo" description="Selecione livro e leitor e veja a previsão de devolução." onClick={() => nav('/emprestimos')} />
-            </div>
-          </div>
-        </section>
-
-        {loading ? <LoadingBanner /> : null}
-
-        <Routes>
-          <Route path="/livros" element={<BooksPage {...shared} />} />
-          <Route path="/leitores" element={<ReadersPage {...shared} />} />
-          <Route path="/emprestimos" element={<LoansPage {...shared} />} />
-          <Route path="/atrasados" element={<OverduePage {...shared} />} />
-          <Route path="*" element={<Navigate to="/livros" replace />} />
-        </Routes>
-      </main>
-    </div>
-  );
-}
-
-function TopNav({ to, icon: Icon, label }) {
-  return (
-    <NavLink
-      to={to}
-      className={({ isActive }) =>
-        `inline-flex items-center gap-2 rounded-2xl px-4 py-2 text-sm font-medium transition ${
-          isActive ? 'bg-cyan-400/15 text-cyan-200 ring-1 ring-cyan-300/20' : 'text-slate-300 hover:bg-white/5 hover:text-white'
-        }`
-      }
-    >
-      <Icon className="h-4 w-4" />
-      {label}
-    </NavLink>
-  );
-}
-
-function StatusPills({ stats }) {
-  const activeLoans = stats.loans.filter((loan) => !(loan.devolvido || loan.dataDevolucao || loan.data_devolucao)).length;
-  const availableBooks = stats.books.reduce((sum, book) => sum + Number(book.exemplaresDisponiveis ?? book.disponiveis ?? 0), 0);
-  return (
-    <div className="flex items-center gap-2 text-xs text-slate-300">
-      <Pill>{stats.books.length} livros</Pill>
-      <Pill>{stats.readers.length} leitores</Pill>
-      <Pill>{activeLoans} ativos</Pill>
-      <Pill>{availableBooks} disponíveis</Pill>
-    </div>
-  );
-}
-
-function Pill({ children }) {
-  return <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1">{children}</span>;
-}
-
-function MiniMetric({ label, value, tone }) {
-  const classes = {
-    cyan: 'from-cyan-400/20 to-cyan-400/5 text-cyan-200 ring-cyan-300/20',
-    violet: 'from-violet-400/20 to-violet-400/5 text-violet-200 ring-violet-300/20',
-    emerald: 'from-emerald-400/20 to-emerald-400/5 text-emerald-200 ring-emerald-300/20',
-  };
-  return (
-    <div className={`rounded-2xl bg-gradient-to-br ${classes[tone]} p-3 ring-1`}>
-      <div className="text-xs uppercase tracking-[0.22em] text-slate-300/80">{label}</div>
-      <div className="mt-1 text-2xl font-semibold text-white">{value}</div>
-    </div>
-  );
-}
-
-function ShortcutCard({ title, description, onClick }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="rounded-2xl border border-white/10 bg-white/5 p-4 text-left transition hover:border-cyan-300/30 hover:bg-white/10"
-    >
-      <div className="font-medium text-white">{title}</div>
-      <div className="mt-1 text-sm text-slate-300">{description}</div>
-    </button>
-  );
-}
-
-function LoadingBanner() {
-  return (
-    <div className="mb-6 flex items-center gap-3 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-slate-200">
-      <LoaderCircle className="h-4 w-4 animate-spin text-cyan-300" />
-      Carregando dados da biblioteca...
-    </div>
-  );
-}
-
-function SectionCard({ title, subtitle, icon: Icon, children, action }) {
-  return (
-    <section className="rounded-3xl border border-white/10 bg-slate-900/80 p-5 shadow-xl shadow-black/10 backdrop-blur sm:p-6">
-      <div className="mb-5 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+    <section className="rounded-3xl border border-white/10 bg-slate-900/70 p-6 shadow-2xl shadow-slate-950/30 backdrop-blur">
+      <div className="mb-5 flex items-start justify-between gap-4">
         <div>
-          <div className="flex items-center gap-2 text-cyan-200">
-            <Icon className="h-5 w-5" />
-            <h2 className="text-xl font-semibold text-white">{title}</h2>
+          <div className="mb-2 inline-flex items-center gap-2 rounded-full border border-cyan-400/20 bg-cyan-400/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.2em] text-cyan-200">
+            <Icon className="h-3.5 w-3.5" />
+            Biblioteca
           </div>
-          <p className="mt-1 text-sm text-slate-300">{subtitle}</p>
+          <h2 className="text-xl font-semibold text-white">{title}</h2>
+          {subtitle && <p className="mt-1 text-sm text-slate-300">{subtitle}</p>}
         </div>
         {action}
       </div>
@@ -298,364 +77,347 @@ function SectionCard({ title, subtitle, icon: Icon, children, action }) {
   );
 }
 
-function BooksPage({ stats, onSaved }) {
-  const [form, setForm] = useState({ titulo: '', autor: '', ano: '', quantidadeExemplares: '' });
-  const [saving, setSaving] = useState(false);
-  const [message, setMessage] = useState('');
-  const books = stats.books;
+function Field({ label, children, hint }) {
+  return (
+    <label className="block">
+      <span className="mb-2 block text-sm font-medium text-slate-200">{label}</span>
+      {children}
+      {hint && <span className="mt-2 block text-xs text-slate-400">{hint}</span>}
+    </label>
+  );
+}
 
-  const submit = async (e) => {
+function App() {
+  const [livros, setLivros] = useState([]);
+  const [leitores, setLeitores] = useState([]);
+  const [emprestimos, setEmprestimos] = useState([]);
+  const [atrasados, setAtrasados] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
+  const [livroForm, setLivroForm] = useState(initialLivro);
+  const [leitorForm, setLeitorForm] = useState(initialLeitor);
+  const [emprestimoForm, setEmprestimoForm] = useState(initialEmprestimo);
+
+  const stats = useMemo(() => [
+    { label: 'Livros cadastrados', value: livros.length, icon: BookOpen },
+    { label: 'Leitores cadastrados', value: leitores.length, icon: Users },
+    { label: 'Empréstimos ativos', value: emprestimos.filter((e) => !e.dataDevolucao).length, icon: ClipboardList },
+    { label: 'Atrasados', value: atrasados.length, icon: CalendarDays },
+  ], [livros, leitores, emprestimos, atrasados]);
+
+  async function loadAll() {
+    setLoading(true);
+    setError('');
+    try {
+      const [livrosData, leitoresData, emprestimosData, atrasadosData] = await Promise.all([
+        request('/livros'),
+        request('/leitores'),
+        request('/emprestimos'),
+        request('/emprestimos/atrasados'),
+      ]);
+      setLivros(livrosData);
+      setLeitores(leitoresData);
+      setEmprestimos(emprestimosData);
+      setAtrasados(atrasadosData);
+    } catch (err) {
+      setError(parseError(err));
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    loadAll();
+  }, []);
+
+  async function handleCreateLivro(e) {
     e.preventDefault();
     setSaving(true);
-    setMessage('');
+    setError('');
+    setSuccess('');
     try {
-      await request('/livros', {
-        method: 'POST',
-        body: JSON.stringify({
-          titulo: form.titulo.trim(),
-          autor: form.autor.trim(),
-          ano: Number(form.ano),
-          quantidadeExemplares: Number(form.quantidadeExemplares),
-        }),
-      });
-      setForm({ titulo: '', autor: '', ano: '', quantidadeExemplares: '' });
-      setMessage('Livro cadastrado com sucesso.');
-      onSaved();
-    } catch (e) {
-      setMessage(e.message || 'Não foi possível cadastrar o livro.');
+      await request('/livros', { method: 'POST', body: JSON.stringify({ ...livroForm, ano: Number(livroForm.ano), quantidadeExemplares: Number(livroForm.quantidadeExemplares) }) });
+      setLivroForm(initialLivro);
+      setSuccess('Livro cadastrado com sucesso.');
+      await loadAll();
+    } catch (err) {
+      setError(parseError(err));
     } finally {
       setSaving(false);
     }
-  };
+  }
+
+  async function handleCreateLeitor(e) {
+    e.preventDefault();
+    setSaving(true);
+    setError('');
+    setSuccess('');
+    try {
+      await request('/leitores', { method: 'POST', body: JSON.stringify(leitorForm) });
+      setLeitorForm(initialLeitor);
+      setSuccess('Leitor cadastrado com sucesso.');
+      await loadAll();
+    } catch (err) {
+      setError(parseError(err));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleCreateEmprestimo(e) {
+    e.preventDefault();
+    setSaving(true);
+    setError('');
+    setSuccess('');
+    try {
+      await request('/emprestimos', { method: 'POST', body: JSON.stringify({ livroId: Number(emprestimoForm.livroId), leitorId: Number(emprestimoForm.leitorId) }) });
+      setEmprestimoForm(initialEmprestimo);
+      setSuccess('Empréstimo registrado com sucesso.');
+      await loadAll();
+    } catch (err) {
+      setError(parseError(err));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function devolver(id) {
+    setSaving(true);
+    setError('');
+    setSuccess('');
+    try {
+      await request(`/emprestimos/${id}/devolucao`, { method: 'PATCH' });
+      setSuccess('Devolução registrada com sucesso.');
+      await loadAll();
+    } catch (err) {
+      setError(parseError(err));
+    } finally {
+      setSaving(false);
+    }
+  }
 
   return (
-    <div className="grid gap-6 xl:grid-cols-[0.9fr_1.1fr]">
-      <SectionCard title="Cadastrar livro" subtitle="Informe os dados do acervo e a quantidade total de exemplares." icon={BookPlus}>
-        <form className="grid gap-4" onSubmit={submit}>
-          <Field label="Título" value={form.titulo} onChange={(v) => setForm((s) => ({ ...s, titulo: v }))} placeholder="Ex.: O Nome da Rosa" required />
-          <Field label="Autor" value={form.autor} onChange={(v) => setForm((s) => ({ ...s, autor: v }))} placeholder="Ex.: Umberto Eco" required />
-          <div className="grid gap-4 sm:grid-cols-2">
-            <Field label="Ano" type="number" value={form.ano} onChange={(v) => setForm((s) => ({ ...s, ano: v }))} placeholder="1980" required />
-            <Field label="Exemplares" type="number" min="1" value={form.quantidadeExemplares} onChange={(v) => setForm((s) => ({ ...s, quantidadeExemplares: v }))} placeholder="3" required />
+    <div className="min-h-screen bg-[radial-gradient(circle_at_top,_rgba(34,211,238,0.18),_transparent_35%),linear-gradient(180deg,#020617_0%,#0f172a_45%,#111827_100%)] text-slate-100">
+      <div className="mx-auto flex max-w-7xl flex-col gap-6 px-4 py-8 sm:px-6 lg:px-8">
+        <header className="overflow-hidden rounded-[2rem] border border-white/10 bg-white/5 p-6 shadow-2xl shadow-black/20 backdrop-blur md:p-8">
+          <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
+            <div className="max-w-3xl">
+              <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-cyan-400/20 bg-cyan-400/10 px-4 py-2 text-sm font-semibold text-cyan-100">
+                <BookOpen className="h-4 w-4" />
+                Sistema web de biblioteca
+              </div>
+              <h1 className="text-3xl font-bold tracking-tight text-white md:text-5xl">
+                Cadastre livros e leitores, controle empréstimos e acompanhe atrasos.
+              </h1>
+              <p className="mt-4 max-w-2xl text-base leading-7 text-slate-300 md:text-lg">
+                A interface reúne as operações principais da biblioteca em um painel único, com feedback imediato para validação, limites de negócio e devoluções.
+              </p>
+            </div>
+            <button
+              onClick={loadAll}
+              className="inline-flex items-center justify-center gap-2 rounded-2xl border border-cyan-400/30 bg-cyan-400/15 px-4 py-3 text-sm font-semibold text-cyan-50 transition hover:bg-cyan-400/25 disabled:opacity-60"
+              disabled={loading}
+            >
+              {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RotateCcw className="h-4 w-4" />}
+              Atualizar dados
+            </button>
           </div>
-          <ActionRow saving={saving} label="Salvar livro" />
-          {message ? <InlineNotice tone={message.includes('sucesso') ? 'success' : 'error'}>{message}</InlineNotice> : null}
-        </form>
-      </SectionCard>
 
-      <SectionCard
-        title="Livros cadastrados"
-        subtitle="Acompanhe o estoque total e os exemplares disponíveis para empréstimo."
-        icon={BookOpen}
-      >
-        <DataTable
-          emptyText="Nenhum livro cadastrado ainda."
-          columns={['Título', 'Autor', 'Ano', 'Disponíveis', 'Total']}
-          rows={books.map((book) => (
-            <tr key={book.id} className="border-t border-white/5">
-              <Td>{book.titulo}</Td>
-              <Td>{book.autor}</Td>
-              <Td>{book.ano}</Td>
-              <Td>
-                <StockBadge available={Number(book.exemplaresDisponiveis ?? book.disponiveis ?? 0)} total={Number(book.quantidadeExemplares ?? book.totalExemplares ?? 0)} />
-              </Td>
-              <Td>{book.quantidadeExemplares ?? book.totalExemplares ?? '—'}</Td>
-            </tr>
-          ))}
-        />
-      </SectionCard>
-    </div>
-  );
-}
+          <div className="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+            {stats.map(({ label, value, icon: Icon }) => (
+              <div key={label} className="rounded-2xl border border-white/10 bg-slate-950/40 p-4">
+                <div className="mb-3 inline-flex rounded-xl bg-cyan-400/10 p-2 text-cyan-200">
+                  <Icon className="h-5 w-5" />
+                </div>
+                <div className="text-3xl font-bold text-white">{value}</div>
+                <div className="mt-1 text-sm text-slate-300">{label}</div>
+              </div>
+            ))}
+          </div>
+        </header>
 
-function ReadersPage({ stats, onSaved }) {
-  const [form, setForm] = useState({ nome: '', email: '' });
-  const [saving, setSaving] = useState(false);
-  const [message, setMessage] = useState('');
-  const readers = stats.readers;
+        {(error || success) && (
+          <div className={`flex items-start gap-3 rounded-2xl border p-4 ${error ? 'border-rose-400/30 bg-rose-500/10 text-rose-100' : 'border-emerald-400/30 bg-emerald-500/10 text-emerald-100'}`}>
+            {error ? <AlertCircle className="mt-0.5 h-5 w-5 shrink-0" /> : <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0" />}
+            <div className="text-sm leading-6">{error || success}</div>
+          </div>
+        )}
 
-  const submit = async (e) => {
-    e.preventDefault();
-    setSaving(true);
-    setMessage('');
-    try {
-      await request('/leitores', {
-        method: 'POST',
-        body: JSON.stringify({ nome: form.nome.trim(), email: form.email.trim() }),
-      });
-      setForm({ nome: '', email: '' });
-      setMessage('Leitor cadastrado com sucesso.');
-      onSaved();
-    } catch (e) {
-      setMessage(e.message || 'Não foi possível cadastrar o leitor.');
-    } finally {
-      setSaving(false);
-    }
-  };
+        <div className="grid gap-6 xl:grid-cols-2">
+          <Section icon={BookOpen} title="Cadastro de livros" subtitle="Informe título, autor, ano e quantidade de exemplares disponíveis.">
+            <form onSubmit={handleCreateLivro} className="grid gap-4">
+              <div className="grid gap-4 md:grid-cols-2">
+                <Field label="Título">
+                  <input className="w-full rounded-2xl border border-white/10 bg-slate-950/60 px-4 py-3 text-white outline-none ring-0 placeholder:text-slate-500 focus:border-cyan-400/60" value={livroForm.titulo} onChange={(e) => setLivroForm((s) => ({ ...s, titulo: e.target.value }))} placeholder="Dom Casmurro" />
+                </Field>
+                <Field label="Autor">
+                  <input className="w-full rounded-2xl border border-white/10 bg-slate-950/60 px-4 py-3 text-white outline-none placeholder:text-slate-500 focus:border-cyan-400/60" value={livroForm.autor} onChange={(e) => setLivroForm((s) => ({ ...s, autor: e.target.value }))} placeholder="Machado de Assis" />
+                </Field>
+                <Field label="Ano">
+                  <input type="number" className="w-full rounded-2xl border border-white/10 bg-slate-950/60 px-4 py-3 text-white outline-none placeholder:text-slate-500 focus:border-cyan-400/60" value={livroForm.ano} onChange={(e) => setLivroForm((s) => ({ ...s, ano: e.target.value }))} placeholder="1899" />
+                </Field>
+                <Field label="Quantidade de exemplares">
+                  <input type="number" min="1" className="w-full rounded-2xl border border-white/10 bg-slate-950/60 px-4 py-3 text-white outline-none placeholder:text-slate-500 focus:border-cyan-400/60" value={livroForm.quantidadeExemplares} onChange={(e) => setLivroForm((s) => ({ ...s, quantidadeExemplares: e.target.value }))} placeholder="3" />
+                </Field>
+              </div>
+              <button className="inline-flex items-center justify-center gap-2 rounded-2xl bg-cyan-500 px-4 py-3 font-semibold text-slate-950 transition hover:bg-cyan-400 disabled:opacity-60" disabled={saving}>
+                {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <ChevronRight className="h-4 w-4" />}
+                Cadastrar livro
+              </button>
+            </form>
+          </Section>
 
-  return (
-    <div className="grid gap-6 xl:grid-cols-[0.9fr_1.1fr]">
-      <SectionCard title="Cadastrar leitor" subtitle="Cada leitor pode manter até 3 empréstimos ativos ao mesmo tempo." icon={Users}>
-        <form className="grid gap-4" onSubmit={submit}>
-          <Field label="Nome" value={form.nome} onChange={(v) => setForm((s) => ({ ...s, nome: v }))} placeholder="Ex.: Ana Costa" required />
-          <Field label="E-mail" type="email" value={form.email} onChange={(v) => setForm((s) => ({ ...s, email: v }))} placeholder="ana@exemplo.com" required />
-          <ActionRow saving={saving} label="Salvar leitor" />
-          {message ? <InlineNotice tone={message.includes('sucesso') ? 'success' : 'error'}>{message}</InlineNotice> : null}
-        </form>
-      </SectionCard>
+          <Section icon={UserRound} title="Cadastro de leitores" subtitle="Cada leitor possui nome e e-mail únicos. ">
+            <form onSubmit={handleCreateLeitor} className="grid gap-4">
+              <Field label="Nome">
+                <input className="w-full rounded-2xl border border-white/10 bg-slate-950/60 px-4 py-3 text-white outline-none placeholder:text-slate-500 focus:border-cyan-400/60" value={leitorForm.nome} onChange={(e) => setLeitorForm((s) => ({ ...s, nome: e.target.value }))} placeholder="Maria Silva" />
+              </Field>
+              <Field label="E-mail">
+                <input type="email" className="w-full rounded-2xl border border-white/10 bg-slate-950/60 px-4 py-3 text-white outline-none placeholder:text-slate-500 focus:border-cyan-400/60" value={leitorForm.email} onChange={(e) => setLeitorForm((s) => ({ ...s, email: e.target.value }))} placeholder="maria@exemplo.com" />
+              </Field>
+              <button className="inline-flex items-center justify-center gap-2 rounded-2xl bg-cyan-500 px-4 py-3 font-semibold text-slate-950 transition hover:bg-cyan-400 disabled:opacity-60" disabled={saving}>
+                {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <ChevronRight className="h-4 w-4" />}
+                Cadastrar leitor
+              </button>
+            </form>
+          </Section>
+        </div>
 
-      <SectionCard title="Leitores cadastrados" subtitle="Lista organizada com identificação rápida por e-mail." icon={Users}>
-        <DataTable
-          emptyText="Nenhum leitor cadastrado ainda."
-          columns={['Nome', 'E-mail']}
-          rows={readers.map((reader) => (
-            <tr key={reader.id} className="border-t border-white/5">
-              <Td>{reader.nome}</Td>
-              <Td>{reader.email}</Td>
-            </tr>
-          ))}
-        />
-      </SectionCard>
-    </div>
-  );
-}
+        <div className="grid gap-6 xl:grid-cols-[1.15fr_0.85fr]">
+          <Section icon={ClipboardList} title="Registrar empréstimo" subtitle="Selecione um livro e um leitor. O sistema valida exemplar disponível e limite de 3 empréstimos ativos por leitor.">
+            <form onSubmit={handleCreateEmprestimo} className="grid gap-4 md:grid-cols-2">
+              <Field label="Livro">
+                <select className="w-full rounded-2xl border border-white/10 bg-slate-950/60 px-4 py-3 text-white outline-none focus:border-cyan-400/60" value={emprestimoForm.livroId} onChange={(e) => setEmprestimoForm((s) => ({ ...s, livroId: e.target.value }))}>
+                  <option value="">Selecione</option>
+                  {livros.map((livro) => (
+                    <option key={livro.id} value={livro.id}>
+                      {livro.titulo} — {livro.autor}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+              <Field label="Leitor">
+                <select className="w-full rounded-2xl border border-white/10 bg-slate-950/60 px-4 py-3 text-white outline-none focus:border-cyan-400/60" value={emprestimoForm.leitorId} onChange={(e) => setEmprestimoForm((s) => ({ ...s, leitorId: e.target.value }))}>
+                  <option value="">Selecione</option>
+                  {leitores.map((leitor) => (
+                    <option key={leitor.id} value={leitor.id}>
+                      {leitor.nome} — {leitor.email}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+              <div className="md:col-span-2">
+                <button className="inline-flex items-center justify-center gap-2 rounded-2xl bg-cyan-500 px-4 py-3 font-semibold text-slate-950 transition hover:bg-cyan-400 disabled:opacity-60" disabled={saving || !livros.length || !leitores.length}>
+                  {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <ChevronRight className="h-4 w-4" />}
+                  Registrar empréstimo
+                </button>
+              </div>
+            </form>
+          </Section>
 
-function LoansPage({ stats, onSaved }) {
-  const [form, setForm] = useState({ livroId: '', leitorId: '' });
-  const [saving, setSaving] = useState(false);
-  const [message, setMessage] = useState('');
-  const loans = stats.loans;
-  const books = stats.books;
-  const readers = stats.readers;
+          <Section icon={CalendarDays} title="Empréstimos atrasados" subtitle="Empréstimos ativos com data prevista de devolução vencida.">
+            <div className="space-y-3">
+              {atrasados.length === 0 ? (
+                <div className="rounded-2xl border border-dashed border-white/10 bg-slate-950/40 p-5 text-sm text-slate-300">
+                  Nenhum empréstimo atrasado no momento.
+                </div>
+              ) : (
+                atrasados.map((item) => (
+                  <div key={item.id} className="rounded-2xl border border-rose-400/20 bg-rose-500/10 p-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <div className="font-semibold text-white">{item.livro?.titulo}</div>
+                        <div className="mt-1 text-sm text-rose-100/80">Leitor: {item.leitor?.nome}</div>
+                      </div>
+                      <span className="rounded-full border border-rose-300/20 bg-rose-400/10 px-3 py-1 text-xs font-semibold text-rose-100">Atrasado</span>
+                    </div>
+                    <div className="mt-3 text-sm text-rose-100/80">Prevista para devolução em {formatDate(item.dataPrevistaDevolucao)}</div>
+                  </div>
+                ))
+              )}
+            </div>
+          </Section>
+        </div>
 
-  const loanableBooks = useMemo(() => books.filter((book) => Number(book.exemplaresDisponiveis ?? book.disponiveis ?? 0) > 0), [books]);
+        <div className="grid gap-6 xl:grid-cols-2">
+          <Section icon={BookOpen} title="Livros cadastrados" subtitle="Visualize os títulos e a quantidade de exemplares informada.">
+            <div className="space-y-3">
+              {livros.length === 0 ? (
+                <div className="rounded-2xl border border-dashed border-white/10 bg-slate-950/40 p-5 text-sm text-slate-300">Nenhum livro cadastrado.</div>
+              ) : (
+                livros.map((livro) => (
+                  <div key={livro.id} className="rounded-2xl border border-white/10 bg-slate-950/40 p-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <div className="font-semibold text-white">{livro.titulo}</div>
+                        <div className="mt-1 text-sm text-slate-300">{livro.autor} • {livro.ano}</div>
+                      </div>
+                      <span className="rounded-full border border-cyan-400/20 bg-cyan-400/10 px-3 py-1 text-xs font-semibold text-cyan-100">{livro.quantidadeExemplares} exemplares</span>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </Section>
 
-  const submit = async (e) => {
-    e.preventDefault();
-    setSaving(true);
-    setMessage('');
-    try {
-      await request('/emprestimos', {
-        method: 'POST',
-        body: JSON.stringify({ livroId: Number(form.livroId), leitorId: Number(form.leitorId) }),
-      });
-      setForm({ livroId: '', leitorId: '' });
-      setMessage('Empréstimo registrado com sucesso.');
-      onSaved();
-    } catch (e) {
-      setMessage(e.message || 'Não foi possível registrar o empréstimo.');
-    } finally {
-      setSaving(false);
-    }
-  };
+          <Section icon={Users} title="Leitores cadastrados" subtitle="Lista de leitores registrados no sistema.">
+            <div className="space-y-3">
+              {leitores.length === 0 ? (
+                <div className="rounded-2xl border border-dashed border-white/10 bg-slate-950/40 p-5 text-sm text-slate-300">Nenhum leitor cadastrado.</div>
+              ) : (
+                leitores.map((leitor) => (
+                  <div key={leitor.id} className="rounded-2xl border border-white/10 bg-slate-950/40 p-4">
+                    <div className="font-semibold text-white">{leitor.nome}</div>
+                    <div className="mt-1 text-sm text-slate-300">{leitor.email}</div>
+                  </div>
+                ))
+              )}
+            </div>
+          </Section>
+        </div>
 
-  const returnLoan = async (id) => {
-    setMessage('');
-    try {
-      await request(`/emprestimos/${id}/devolver`, { method: 'PATCH' });
-      setMessage('Devolução registrada com sucesso.');
-      onSaved();
-    } catch (e) {
-      setMessage(e.message || 'Não foi possível registrar a devolução.');
-    }
-  };
-
-  return (
-    <div className="grid gap-6 xl:grid-cols-[0.9fr_1.1fr]">
-      <SectionCard title="Registrar empréstimo" subtitle="Escolha um livro disponível e um leitor cadastrado." icon={RotateCcw}>
-        <form className="grid gap-4" onSubmit={submit}>
-          <SelectField
-            label="Livro"
-            value={form.livroId}
-            onChange={(v) => setForm((s) => ({ ...s, livroId: v }))}
-            required
-            options={loanableBooks.map((book) => ({ value: book.id, label: `${book.titulo} — ${book.autor} (${Number(book.exemplaresDisponiveis ?? book.disponiveis ?? 0)} disponíveis)` }))}
-            placeholder={books.length === 0 ? 'Cadastre livros primeiro' : 'Selecione um livro'}
-          />
-          <SelectField
-            label="Leitor"
-            value={form.leitorId}
-            onChange={(v) => setForm((s) => ({ ...s, leitorId: v }))}
-            required
-            options={readers.map((reader) => ({ value: reader.id, label: `${reader.nome} — ${reader.email}` }))}
-            placeholder={readers.length === 0 ? 'Cadastre leitores primeiro' : 'Selecione um leitor'}
-          />
-          <ActionRow saving={saving} label="Registrar empréstimo" />
-          <p className="text-xs leading-5 text-slate-400">A data prevista de devolução é calculada automaticamente para 14 dias após o empréstimo.</p>
-          {message ? <InlineNotice tone={message.includes('sucesso') ? 'success' : 'error'}>{message}</InlineNotice> : null}
-        </form>
-      </SectionCard>
-
-      <SectionCard title="Empréstimos ativos e encerrados" subtitle="Acompanhe o histórico e devolva com um clique quando necessário." icon={BookOpen}>
-        <DataTable
-          emptyText="Nenhum empréstimo cadastrado ainda."
-          columns={['Livro', 'Leitor', 'Empréstimo', 'Prevista', 'Status', 'Ação']}
-          rows={loans.map((loan) => {
-            const devolvido = Boolean(loan.devolvido || loan.dataDevolucao || loan.data_devolucao);
-            const atrasado = !devolvido && Boolean(loan.atrasado);
-            const ativo = !devolvido;
-            return (
-              <tr key={loan.id} className="border-t border-white/5">
-                <Td>{loan.livro?.titulo ?? loan.tituloLivro ?? `Livro #${loan.livroId}`}</Td>
-                <Td>{loan.leitor?.nome ?? loan.nomeLeitor ?? `Leitor #${loan.leitorId}`}</Td>
-                <Td>{formatDate(loan.dataEmprestimo ?? loan.data_emprestimo)}</Td>
-                <Td>{formatDate(loan.dataPrevistaDevolucao ?? loan.data_prevista_devolucao)}</Td>
-                <Td>
-                  <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${atrasado ? 'bg-rose-500/15 text-rose-200' : ativo ? 'bg-amber-500/15 text-amber-200' : 'bg-emerald-500/15 text-emerald-200'}`}>
-                    {atrasado ? 'Atrasado' : ativo ? 'Ativo' : 'Devolvido'}
-                  </span>
-                </Td>
-                <Td>
-                  {ativo ? (
-                    <button
-                      type="button"
-                      onClick={() => returnLoan(loan.id)}
-                      className="inline-flex items-center gap-2 rounded-xl border border-emerald-400/20 bg-emerald-500/10 px-3 py-2 text-sm font-medium text-emerald-100 transition hover:bg-emerald-500/20"
-                    >
-                      <RotateCcw className="h-4 w-4" />
-                      Devolver
-                    </button>
-                  ) : (
-                    <span className="text-sm text-slate-400">—</span>
-                  )}
-                </Td>
-              </tr>
-            );
-          })}
-        />
-      </SectionCard>
-    </div>
-  );
-}
-
-function OverduePage({ stats }) {
-  const overdue = stats.overdue;
-  return (
-    <SectionCard title="Empréstimos atrasados" subtitle="Consulta dedicada aos empréstimos ativos com data prevista vencida." icon={Clock3}>
-      <DataTable
-        emptyText="Nenhum empréstimo atrasado no momento."
-        columns={['Livro', 'Leitor', 'Emprestado em', 'Prevista', 'Dias em atraso']}
-        rows={overdue.map((loan) => (
-          <tr key={loan.id} className="border-t border-white/5">
-            <Td>{loan.livro?.titulo ?? loan.tituloLivro ?? `Livro #${loan.livroId}`}</Td>
-            <Td>{loan.leitor?.nome ?? loan.nomeLeitor ?? `Leitor #${loan.leitorId}`}</Td>
-            <Td>{formatDate(loan.dataEmprestimo ?? loan.data_emprestimo)}</Td>
-            <Td>{formatDate(loan.dataPrevistaDevolucao ?? loan.data_prevista_devolucao)}</Td>
-            <Td>
-              <span className="inline-flex rounded-full bg-rose-500/15 px-2.5 py-1 text-xs font-semibold text-rose-200">
-                {loan.diasEmAtraso ?? loan.dias_atraso ?? '—'}
-              </span>
-            </Td>
-          </tr>
-        ))}
-      />
-    </SectionCard>
-  );
-}
-
-function Field({ label, value, onChange, type = 'text', ...props }) {
-  return (
-    <label className="grid gap-2">
-      <span className="text-sm font-medium text-slate-200">{label}</span>
-      <input
-        type={type}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className="rounded-2xl border border-white/10 bg-slate-950/80 px-4 py-3 text-slate-100 outline-none transition placeholder:text-slate-500 focus:border-cyan-300/40 focus:ring-2 focus:ring-cyan-400/20"
-        {...props}
-      />
-    </label>
-  );
-}
-
-function SelectField({ label, value, onChange, options, placeholder, ...props }) {
-  return (
-    <label className="grid gap-2">
-      <span className="text-sm font-medium text-slate-200">{label}</span>
-      <select
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className="rounded-2xl border border-white/10 bg-slate-950/80 px-4 py-3 text-slate-100 outline-none transition focus:border-cyan-300/40 focus:ring-2 focus:ring-cyan-400/20"
-        {...props}
-      >
-        <option value="">{placeholder}</option>
-        {options.map((option) => (
-          <option key={option.value} value={option.value}>
-            {option.label}
-          </option>
-        ))}
-      </select>
-    </label>
-  );
-}
-
-function ActionRow({ saving, label }) {
-  return (
-    <button
-      type="submit"
-      disabled={saving}
-      className="inline-flex items-center justify-center gap-2 rounded-2xl bg-cyan-400 px-4 py-3 font-semibold text-slate-950 transition hover:bg-cyan-300 disabled:cursor-not-allowed disabled:opacity-60"
-    >
-      {saving ? <LoaderCircle className="h-4 w-4 animate-spin" /> : null}
-      {saving ? 'Salvando...' : label}
-    </button>
-  );
-}
-
-function InlineNotice({ tone, children }) {
-  const styles = tone === 'success' ? 'border-emerald-400/20 bg-emerald-500/10 text-emerald-100' : 'border-rose-400/20 bg-rose-500/10 text-rose-100';
-  return <div className={`rounded-2xl border px-4 py-3 text-sm ${styles}`}>{children}</div>;
-}
-
-function DataTable({ columns, rows, emptyText }) {
-  return (
-    <div className="overflow-hidden rounded-2xl border border-white/10 bg-slate-950/50">
-      <div className="overflow-x-auto">
-        <table className="min-w-full text-left text-sm">
-          <thead className="bg-white/5 text-slate-300">
-            <tr>
-              {columns.map((column) => (
-                <th key={column} className="px-4 py-3 font-medium">
-                  {column}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody className="text-slate-100">
-            {rows.length > 0 ? (
-              rows
+        <Section icon={ClipboardList} title="Empréstimos e devoluções" subtitle="Acompanhe empréstimos ativos e conclua a devolução quando necessário.">
+          <div className="space-y-3">
+            {emprestimos.length === 0 ? (
+              <div className="rounded-2xl border border-dashed border-white/10 bg-slate-950/40 p-5 text-sm text-slate-300">Nenhum empréstimo registrado.</div>
             ) : (
-              <tr>
-                <td className="px-4 py-8 text-center text-slate-400" colSpan={columns.length}>
-                  {emptyText}
-                </td>
-              </tr>
+              emprestimos.map((emprestimo) => {
+                const devolvido = Boolean(emprestimo.dataDevolucao);
+                return (
+                  <div key={emprestimo.id} className="rounded-2xl border border-white/10 bg-slate-950/40 p-4">
+                    <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+                      <div className="space-y-1">
+                        <div className="font-semibold text-white">{emprestimo.livro?.titulo}</div>
+                        <div className="text-sm text-slate-300">Leitor: {emprestimo.leitor?.nome}</div>
+                        <div className="text-sm text-slate-400">Empréstimo: {formatDate(emprestimo.dataEmprestimo)} • Previsto: {formatDate(emprestimo.dataPrevistaDevolucao)}{devolvido ? ` • Devolvido: ${formatDate(emprestimo.dataDevolucao)}` : ''}</div>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-3">
+                        <span className={`rounded-full px-3 py-1 text-xs font-semibold ${devolvido ? 'border border-emerald-400/20 bg-emerald-400/10 text-emerald-100' : 'border border-amber-400/20 bg-amber-400/10 text-amber-100'}`}>
+                          {devolvido ? 'Devolvido' : 'Ativo'}
+                        </span>
+                        {!devolvido && (
+                          <button onClick={() => devolver(emprestimo.id)} className="inline-flex items-center gap-2 rounded-2xl border border-white/10 bg-white/5 px-4 py-2 text-sm font-semibold text-white transition hover:bg-white/10 disabled:opacity-60" disabled={saving}>
+                            <RotateCcw className="h-4 w-4" />
+                            Registrar devolução
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })
             )}
-          </tbody>
-        </table>
+          </div>
+        </Section>
+
+        <footer className="pb-2 text-center text-sm text-slate-400">
+          Sistema de biblioteca com foco em usabilidade, retorno imediato e tratamento de erros de regra de negócio.
+        </footer>
       </div>
     </div>
   );
-}
-
-function Td({ children }) {
-  return <td className="px-4 py-3 align-top text-slate-200">{children}</td>;
-}
-
-function StockBadge({ available, total }) {
-  const low = available === 0;
-  return (
-    <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${low ? 'bg-rose-500/15 text-rose-200' : 'bg-emerald-500/15 text-emerald-200'}`}>
-      {available}/{total}
-    </span>
-  );
-}
-
-function formatDate(value) {
-  if (!value) return '—';
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return String(value);
-  return new Intl.DateTimeFormat('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' }).format(date);
 }
 
 export default App;

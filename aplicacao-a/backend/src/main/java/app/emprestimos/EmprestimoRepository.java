@@ -8,10 +8,12 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 public interface EmprestimoRepository extends JpaRepository<Emprestimo, Long> {
-    long countByLeitorIdAndDataDevolucaoIsNull(Long leitorId);
 
-    @Query("select e from Emprestimo e where e.dataDevolucao is null and e.dataPrevistaDevolucao < :hoje order by e.dataPrevistaDevolucao asc, e.id asc")
+    @Query("select e from Emprestimo e where e.dataDevolucao is null")
+    List<Emprestimo> findAtivos();
+
+    @Query("select e from Emprestimo e where e.dataDevolucao is null and e.dataPrevistaDevolucao < :hoje")
     List<Emprestimo> findAtrasados(@Param("hoje") LocalDate hoje);
 
-    List<Emprestimo> findByDataDevolucaoIsNullOrderByIdAsc();
+    long countByLeitorIdAndDataDevolucaoIsNull(Long leitorId);
 }

@@ -3,92 +3,71 @@ package app.emprestimos;
 import java.time.LocalDate;
 import java.util.List;
 
-import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import app.common.DomainException;
 import app.leitores.Leitor;
-import app.leitores.LeitorService;
+import app.leitores.LeitorRepository;
 import app.livros.Livro;
-import app.livros.LivroService;
+import app.livros.LivroRepository;
+import app.shared.BusinessException;
+import lombok.RequiredArgsConstructor;
 
 @Service
+@RequiredArgsConstructor
 public class EmprestimoService {
 
-    private static final int MAX_EMPRESTIMOS_ATIVOS = 3;
-
-    private final EmprestimoRepository repository;
-    private final LivroService livroService;
-    private final LeitorService leitorService;
-
-    public EmprestimoService(EmprestimoRepository repository, LivroService livroService, LeitorService leitorService) {
-        this.repository = repository;
-        this.livroService = livroService;
-        this.leitorService = leitorService;
-    }
-
-    @Transactional
-    public EmprestimoResponse criar(EmprestimoRequest request) {
-        Livro livro = livroService.getReferencia(request.livroId());
-        Leitor leitor = leitorService.getReferencia(request.leitorId());
-        LocalDate dataEmprestimo = request.dataEmprestimo() != null ? request.dataEmprestimo() : LocalDate.now();
-
-        if (livro.getExemplaresDisponiveis() == null || livro.getExemplaresDisponiveis() <= 0) {
-            throw new DomainException(HttpStatus.CONFLICT, "Não há exemplares disponíveis para este livro");
-        }
-
-        long emprestimosAtivos = repository.countByLeitorIdAndDataDevolucaoIsNull(leitor.getId());
-        if (emprestimosAtivos >= MAX_EMPRESTIMOS_ATIVOS) {
-            throw new DomainException(HttpStatus.CONFLICT, "O leitor já possui o máximo de 3 empréstimos ativos");
-        }
-
-        livro.setExemplaresDisponiveis(livro.getExemplaresDisponiveis() - 1);
-        livroService.salvar(livro);
-
-        Emprestimo emprestimo = new Emprestimo();
-        emprestimo.setLivro(livro);
-        emprestimo.setLeitor(leitor);
-        emprestimo.setDataEmprestimo(dataEmprestimo);
-        emprestimo.setDataPrevistaDevolucao(dataEmprestimo.plusDays(14));
-        emprestimo = repository.save(emprestimo);
-        return toResponse(emprestimo);
-    }
-
-    @Transactional
-    public EmprestimoResponse devolver(Long id) {
-        Emprestimo emprestimo = repository.findById(id).orElseThrow(() -> new jakarta.persistence.EntityNotFoundException("Empréstimo não encontrado"));
-        if (emprestimo.getDataDevolucao() != null) {
-            throw new DomainException(HttpStatus.CONFLICT, "Este empréstimo já foi devolvido");
-        }
-        emprestimo.setDataDevolucao(LocalDate.now());
-        Livro livro = emprestimo.getLivro();
-        livro.setExemplaresDisponiveis(livro.getExemplaresDisponiveis() + 1);
-        livroService.salvar(livro);
-        return toResponse(repository.save(emprestimo));
-    }
+    private final EmprestimoRepository emprestimoRepository;
+    private final LivroRepository livroRepository;
+    private final LeitorRepository leitorRepository;
 
     @Transactional(readOnly = true)
     public List<EmprestimoResponse> listar() {
-        return repository.findAll().stream().map(this::toResponse).toList();
+        LocalDate hoje = LocalDate.now();
+        return emprestimoRepository.findAll().stream().map(e -> EmprestimoResponse.fromEntity(e, hoje)).toList();
     }
 
     @Transactional(readOnly = true)
     public List<EmprestimoResponse> listarAtrasados() {
-        return repository.findAtrasados(LocalDate.now()).stream().map(this::toResponse).toList();
+        LocalDate hoje = LocalDate.now();
+        return emprestimoRepository.findAtrasados(hoje).stream().map(e -> EmprestimoResponse.fromEntity(e, hoje)).toList();
     }
 
-    private EmprestimoResponse toResponse(Emprestimo emprestimo) {
-        return new EmprestimoResponse(
-                emprestimo.getId(),
-                emprestimo.getLivro().getId(),
-                emprestimo.getLivro().getTitulo(),
-                emprestimo.getLeitor().getId(),
-                emprestimo.getLeitor().getNome(),
-                emprestimo.getDataEmprestimo(),
-                emprestimo.getDataPrevistaDevolucao(),
-                emprestimo.getDataDevolucao(),
-                emprestimo.getDataDevolucao() == null && emprestimo.getDataPrevistaDevolucao().isBefore(LocalDate.now()),
-                emprestimo.getDataDevolucao() == null);
+    @Transactional
+    public EmprestimoResponse registrar(EmprestimoRequest request) {
+        Livro livro = livroRepository.findById(request.livroId())
+                .orElseThrow(() -> new BusinessException("Livro não encontrado."));
+        Leitor leitor = leitorRepository.findById(request.leitorId())
+                .orElseThrow(() -> new BusinessException("Leitor não encontrado."));
+        if (livro.getExemplaresDisponiveis() == null || livro.getExemplaresDisponiveis() <= 0) {
+            throw new BusinessException("Não há exemplar disponível para este livro.");
+        }
+        long ativos = emprestimoRepository.countByLeitorIdAndDataDevolucaoIsNull(leitor.getId());
+        if (ativos >= 3) {
+            throw new BusinessException("Este leitor já possui 3 empréstimos ativos.");
+        }
+        livro.setExemplaresDisponiveis(livro.getExemplaresDisponiveis() - 1);
+        livroRepository.save(livro);
+
+        Emprestimo emprestimo = new Emprestimo();
+        emprestimo.setLivro(livro);
+        emprestimo.setLeitor(leitor);
+        emprestimo.setDataEmprestimo(LocalDate.now());
+        emprestimo.setDataPrevistaDevolucao(LocalDate.now().plusDays(14));
+        return EmprestimoResponse.fromEntity(emprestimoRepository.save(emprestimo), LocalDate.now());
+    }
+
+    @Transactional
+    public EmprestimoResponse devolver(Long id) {
+        Emprestimo emprestimo = emprestimoRepository.findById(id)
+                .orElseThrow(() -> new BusinessException("Empréstimo não encontrado."));
+        if (emprestimo.getDataDevolucao() != null) {
+            throw new BusinessException("Este empréstimo já foi devolvido.");
+        }
+        emprestimo.setDataDevolucao(LocalDate.now());
+        Livro livro = emprestimo.getLivro();
+        livro.setExemplaresDisponiveis(livro.getExemplaresDisponiveis() + 1);
+        livroRepository.save(livro);
+        return EmprestimoResponse.fromEntity(emprestimoRepository.save(emprestimo), LocalDate.now());
     }
 }
