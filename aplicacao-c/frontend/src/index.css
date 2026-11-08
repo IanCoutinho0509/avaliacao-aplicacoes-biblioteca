@@ -1,0 +1,3 @@
+/* Arquivo fixo: os agentes não podem alterar. Carrega o Tailwind CSS v4 para toda a aplicação.
+   Estilos próprios vão em outros arquivos .css importados pelos componentes. */
+@import "tailwindcss";
