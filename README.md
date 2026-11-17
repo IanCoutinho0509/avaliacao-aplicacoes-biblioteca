@@ -1,19 +1,17 @@
-# Aplicações A a F
+# Aplicações A a D
 
-Código-fonte das seis aplicações web de biblioteca avaliadas na pesquisa "Aplicação do Modelo 3C de Colaboração à
+Código-fonte das quatro aplicações web de biblioteca avaliadas na pesquisa "Aplicação do Modelo 3C de Colaboração à
 Interação entre Agentes Inteligentes Baseados em Grandes Modelos de Linguagem", Trabalho de Conclusão de Curso de Ian
 Araujo Coutinho no Bacharelado em Ciência da Computação da FFCLRP-USP, com orientação do Prof. Dr. Cléver Ricardo
 Guareis de Farias.
 
-As seis foram construídas a partir do mesmo enunciado. As letras foram embaralhadas e não seguem nenhuma ordem, então nem a
+As quatro foram construídas a partir do mesmo enunciado. As letras foram embaralhadas e não seguem nenhuma ordem, então nem a
 letra nem a sequência indicam como cada aplicação foi feita. Cada uma está na sua pasta, identificada só pela letra:
 
 - [Aplicação A](aplicacao-a)
 - [Aplicação B](aplicacao-b)
 - [Aplicação C](aplicacao-c)
 - [Aplicação D](aplicacao-d)
-- [Aplicação E](aplicacao-e)
-- [Aplicação F](aplicacao-f)
 
 ## O que cada aplicação faz
 
@@ -33,7 +31,7 @@ Um sistema de biblioteca com cadastro de livros, cadastro de leitores e controle
 | `backend/src/main/resources/schema.sql` | O esquema do banco de dados MySQL 8 |
 | `frontend/src/` | O front-end, em React com Vite e Tailwind CSS |
 
-Alguns arquivos são idênticos nas seis pastas, porque vieram de um mesmo esqueleto de projeto: `backend/pom.xml`,
+Alguns arquivos são idênticos nas quatro pastas, porque vieram de um mesmo esqueleto de projeto: `backend/pom.xml`,
 `backend/src/main/resources/application.properties`, `frontend/package.json`, `frontend/package-lock.json`,
 `frontend/vite.config.js`, `frontend/index.html`, `frontend/src/main.jsx` e `frontend/src/index.css`. Eles não
 diferenciam as aplicações.
